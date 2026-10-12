@@ -23,6 +23,12 @@ def reports_dir(name: str = "") -> Path:
     folder = re.sub(r'[<>:"/\|?*]', "", name).strip(" .") or "inkwake"
     return desktop() / folder
 
+# Public report server baked into the app so users need no setup. Set after deploying cloud/worker.js,
+# e.g. "https://inkwake-reports.<your-subdomain>.workers.dev". Empty = cloud reports are off unless
+# a URL is set in Settings, ~/.inkwake/config.json or the INKWAKE_CLOUD_URL environment variable.
+DEFAULT_CLOUD_URL = ""
+
+
 LANG_CODES = {
     "English": "en", "Tamil": "ta", "Hindi": "hi", "Telugu": "te", "Malayalam": "ml", "Kannada": "kn",
     "Bengali": "bn", "Urdu": "ur", "Spanish": "es", "French": "fr", "German": "de", "Italian": "it",
@@ -48,6 +54,8 @@ class Settings:
     read_names: bool = True  # read participant names from the meeting screen
     bubble_x: int = -1
     bubble_y: int = -1
+    cloud_report_url: str = ""
+    cloud_report_token: str = ""  # only if the Worker was deployed with an INGEST_TOKEN secret
 
     @classmethod
     def load(cls) -> "Settings":
@@ -60,11 +68,16 @@ class Settings:
         if raw.get("version", 1) < 2:  # v1 had translation off by default; captions should follow the chosen language
             s.translate, s.version = True, 2
         s.api_key = s.api_key or os.environ.get("GEMINI_API_KEY", "")
+        s.cloud_report_url = s.cloud_report_url or os.environ.get("INKWAKE_CLOUD_URL", "") or DEFAULT_CLOUD_URL
+        s.cloud_report_token = s.cloud_report_token or os.environ.get("INKWAKE_CLOUD_TOKEN", "")
         return s
 
     def save(self) -> None:
         HOME.mkdir(parents=True, exist_ok=True)
-        CONFIG_FILE.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
+        data = asdict(self)
+        if data["cloud_report_url"] == DEFAULT_CLOUD_URL:  # don't freeze the built-in server into the user's file
+            data["cloud_report_url"] = ""
+        CONFIG_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def load_history() -> list[dict]:

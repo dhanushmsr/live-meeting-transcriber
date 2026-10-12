@@ -3,7 +3,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QComboBox, QDialog, QHBoxLayout, QLineEdit, QVBoxLayout
 
-from ..config import LANGUAGES, Settings
+from ..config import DEFAULT_CLOUD_URL, LANGUAGES, Settings
 from .icons import IconButton
 
 STYLE = """
@@ -38,6 +38,10 @@ class SettingsDialog(QDialog):
         self.lang.setCurrentText(settings.target_language)
         self.lang.setToolTip("Translate into this language")
 
+        self.cloud_url = QLineEdit(settings.cloud_report_url)
+        self.cloud_url.setPlaceholderText("Cloud Report Server URL (optional, e.g. Cloudflare Worker)")
+        self.cloud_url.setToolTip("URL of your 72h Cloudflare Worker report server")
+
         self.cc = IconButton("cc", "Live captions", checkable=True)
         self.cc.setChecked(settings.captions)
         self.tr = IconButton("translate", "Show captions in the selected language (translate)", checkable=True)
@@ -56,6 +60,8 @@ class SettingsDialog(QDialog):
         fields = [self.name, self.email, self.role]
         if not settings.api_key:  # key/model are only shown until a key is saved
             fields.append(self.key)
+        if not DEFAULT_CLOUD_URL:  # with a built-in server there is nothing for the user to configure
+            fields.append(self.cloud_url)
         for w in fields:
             lay.addWidget(w)
         toggles = QHBoxLayout()
@@ -76,6 +82,8 @@ class SettingsDialog(QDialog):
         s.name, s.email, s.role = self.name.text().strip(), self.email.text().strip(), self.role.text().strip()
         if not s.api_key:
             s.api_key = self.key.text().strip()
+        if not DEFAULT_CLOUD_URL:
+            s.cloud_report_url = self.cloud_url.text().strip()
         s.captions, s.translate, s.auto_detect = self.cc.isChecked(), self.tr.isChecked(), self.auto.isChecked()
         s.read_names = self.names.isChecked()
         s.target_language = self.lang.currentText()

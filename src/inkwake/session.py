@@ -19,6 +19,7 @@ class Session(QObject):
     caption = Signal(str, str, bool)  # speaker, text so far, is_final
     state_changed = Signal(str)       # recording | paused | processing | idle
     finished = Signal(str)            # report path
+    cloud_link_ready = Signal(str)    # 72-hour cloud report URL
     notice = Signal(str)
     failed = Signal(str)
 
@@ -168,4 +169,57 @@ class Session(QObject):
             "title": self.title, "started": self.started_at.isoformat(timespec="seconds"),
             "minutes": round(minutes, 2), "report": str(path),
         })
+        link = self._publish(
+            title=self.title, started=self.started_at, minutes=minutes, platform=self.platform,
+            transcript=self.transcript, talk=self.talk, analysis=analysis,
+            participants=sorted(self.participants), languages=sorted(self.languages),
+        )
+        if link:
+            self.cloud_link_ready.emit(link)
         self.finished.emit(str(path))
+
+    # ---- online report link ---------------------------------------------
+    def _payload(self, **data) -> dict:
+        started = data.get("started")
+        return {
+            "title": data.get("title") or "Meeting Report",
+            "started_at": started.isoformat() if hasattr(started, "isoformat") else str(started),
+            "duration_minutes": data.get("minutes"),
+            "platform": data.get("platform"),
+            "host_name": self.settings.name,
+            "analysis": data.get("analysis"),
+            "participants": data.get("participants"),
+            "languages": data.get("languages"),
+            "transcript": [{k: v for k, v in line.items() if k != "mono"} for line in data.get("transcript", [])],
+            "talk": {spk: dict(mins) for spk, mins in data.get("talk", {}).items()},
+        }
+
+    def _publish(self, **data) -> str | None:
+        """Cloud server if one is configured, otherwise (or if it fails) the local server on this computer."""
+        payload = self._payload(**data)
+        if self.settings.cloud_report_url:
+            url = self._upload_cloud(payload)
+            if url:
+                return url
+        try:
+            from . import localserver
+            return localserver.store(payload)
+        except Exception as e:
+            self.notice.emit(f"Could not create the online report: {e}")
+            return None
+
+    def _upload_cloud(self, payload: dict) -> str | None:
+        import json
+        import urllib.request
+        endpoint = f"{self.settings.cloud_report_url.rstrip('/')}/api/report"
+        try:
+            headers = {"Content-Type": "application/json", "User-Agent": "Inkwake/0.2.0"}
+            if self.settings.cloud_report_token:
+                headers["Authorization"] = f"Bearer {self.settings.cloud_report_token}"
+            req = urllib.request.Request(
+                endpoint, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                return json.loads(resp.read().decode("utf-8")).get("url")
+        except Exception as e:
+            self.notice.emit(f"Cloud report upload skipped, using the local report instead: {e}")
+            return None

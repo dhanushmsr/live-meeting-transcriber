@@ -1,0 +1,11 @@
+name = "inkwake-reports"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# account_id is picked up from `wrangler login`; you do not need to set it here.
+
+# Create the namespace once with:  wrangler kv namespace create REPORTS
+# then paste the id it prints below (reports are stored here and deleted automatically after 72 hours).
+[[kv_namespaces]]
+binding = "REPORTS"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"

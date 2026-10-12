@@ -46,6 +46,7 @@ class InkApp:
         self.session: Session | None = None
         self._prompted: str | None = None
         self._last_report: str | None = None
+        self._cloud_opened = False
 
         self.bubble = Bubble()
         self.bubble.action.connect(self.on_action)
@@ -63,6 +64,11 @@ class InkApp:
         self.tray.messageClicked.connect(self._open_last_report)
         self.tray.show()
 
+        try:
+            from . import localserver
+            localserver.ensure_started()  # keeps earlier report links working while Ink runs
+        except Exception as e:
+            print(f"[ink] local report server not started: {e}", file=sys.stderr)
         self._place_bubble()
         self.bubble.show()
         if detect:
@@ -141,6 +147,7 @@ class InkApp:
         self.session.notice.connect(self._notify)
         self.session.failed.connect(self._on_failed)
         self.session.finished.connect(self._on_finished)
+        self.session.cloud_link_ready.connect(self._on_cloud_link)
         self.session.start(platform, title)
 
     # ---- session callbacks ---------------------------------------------
@@ -159,8 +166,19 @@ class InkApp:
 
     def _on_finished(self, path: str) -> None:
         self._last_report = path
-        _reveal(path)
-        self._notify(f"Report saved to Desktop/{os.path.basename(os.path.dirname(path))}: {os.path.basename(path)}")
+        folder = f"Desktop/{os.path.basename(os.path.dirname(path))}"
+        if self._cloud_opened:  # the online report is already on screen; the .docx is just a backup copy
+            self._cloud_opened = False
+            self._notify(f"Online report opened and link copied. Backup saved in {folder}.")
+        else:
+            _reveal(path)
+            self._notify(f"Report saved to {folder}: {os.path.basename(path)}")
+
+    def _on_cloud_link(self, url: str) -> None:
+        import webbrowser
+        webbrowser.open(url)
+        QGuiApplication.clipboard().setText(url)
+        self._cloud_opened = True
 
     # ---- meeting detection & consent -----------------------------------
     def _poll(self) -> None:

@@ -1,7 +1,7 @@
 # Ink
 
 A meeting assistant that works with any meeting app (Meet, Zoom, Teams, WhatsApp, ...).
-It listens, shows live captions, translates, and **downloads a `.docx` report automatically when the meeting ends**.
+It listens, shows live captions, translates, and when the meeting ends opens an **online report** (kept for 72 hours) in your browser.
 
 ## Run it straight from GitHub (no clone)
 
@@ -45,9 +45,15 @@ The key is stored only on your machine in `~/.inkwake/config.json`. Never commit
 - When a meeting is detected, Ink asks permission before listening. Nothing is captured before you agree.
   You can also start it manually from the bubble.
 - Settings (icons only): profile, API key, live captions, live translation + language, auto-detect.
-- When you stop (or the meeting ends), the report is saved automatically as a `.docx` in `Desktop/<your name>/` (or `Desktop/inkwake/`), named after the meeting title or just the date and time:
-  summary, topics, key points, decisions, action items, talk-time per speaker (charts),
-  meeting minutes, total minutes across all your meetings, full transcript.
+- When you stop (or the meeting ends), Ink opens the report in your default browser at
+  `http://localhost:8731/r/<id>`. It reads like an online doc, with the summary, topics, decisions, action items,
+  speaking-time chart and the full transcript, and has buttons to **export DOCX, PDF or Markdown** and to share the link.
+  - **Local mode (default).** The report is served by Ink itself on your own computer. It is only reachable from
+    this machine, only while Ink is running, and is deleted after **72 hours**. Reports are stored in
+    `~/.inkwake/reports/`.
+  - **Cloud mode (optional, for sharing).** Deploy `cloud/` to Cloudflare and set its URL, and the same page is
+    published at a public link anyone can open for 72 hours. See [`cloud/README.md`](cloud/README.md).
+  - **Backup copy.** A `.docx` is also saved in `Desktop/<your name>/` (or `Desktop/inkwake/`).
 
 ## How audio is captured
 
