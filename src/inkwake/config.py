@@ -23,10 +23,9 @@ def reports_dir(name: str = "") -> Path:
     folder = re.sub(r'[<>:"/\|?*]', "", name).strip(" .") or "inkwake"
     return desktop() / folder
 
-# Public report server baked into the app so users need no setup. Set after deploying cloud/worker.js,
-# e.g. "https://inkwake-reports.<your-subdomain>.workers.dev". Empty = cloud reports are off unless
-# a URL is set in Settings, ~/.inkwake/config.json or the INKWAKE_CLOUD_URL environment variable.
-DEFAULT_CLOUD_URL = ""
+# Report server used when a user turns on "share online" in Settings (see cloud/). Nothing is uploaded unless they do.
+# Override with `cloud_report_url` in ~/.inkwake/config.json or the INKWAKE_CLOUD_URL environment variable.
+DEFAULT_CLOUD_URL = "https://inkwake-reports.inkwake.workers.dev"
 
 
 LANG_CODES = {
@@ -55,6 +54,7 @@ class Settings:
     bubble_x: int = -1
     bubble_y: int = -1
     cloud_report_url: str = ""
+    share_online: bool = False    # upload finished reports to the report server (shareable link). Off by default.
     cloud_report_token: str = ""  # only if the Worker was deployed with an INGEST_TOKEN secret
 
     @classmethod
@@ -70,6 +70,9 @@ class Settings:
         s.api_key = s.api_key or os.environ.get("GEMINI_API_KEY", "")
         s.cloud_report_url = s.cloud_report_url or os.environ.get("INKWAKE_CLOUD_URL", "") or DEFAULT_CLOUD_URL
         s.cloud_report_token = s.cloud_report_token or os.environ.get("INKWAKE_CLOUD_TOKEN", "")
+        # Pointing Ink at a server through the environment means "share for this run". It is a plain attribute (not a
+        # saved setting), so saving Settings can never turn sharing on by accident.
+        s.env_share = bool(os.environ.get("INKWAKE_CLOUD_URL"))
         return s
 
     def save(self) -> None:

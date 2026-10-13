@@ -4,8 +4,14 @@ compatibility_date = "2024-01-01"
 
 # account_id is picked up from `wrangler login`; you do not need to set it here.
 
+# Optional: serve reports from your own domain (the domain must already be on your Cloudflare account).
+# Uncomment and replace the hostname, then deploy again.
+# routes = [
+#   { pattern = "reports.yourname.me", custom_domain = true }
+# ]
+
 # Create the namespace once with:  wrangler kv namespace create REPORTS
 # then paste the id it prints below (reports are stored here and deleted automatically after 72 hours).
 [[kv_namespaces]]
 binding = "REPORTS"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = "2a092ad93d6a4e81ba058144643e42a5"

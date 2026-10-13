@@ -32,6 +32,14 @@ HEADERS = {
 
 _lock = threading.Lock()
 _server: ThreadingHTTPServer | None = None
+_asker = None  # callable(record: dict, question: str) -> str, set by the app (it owns the Gemini key)
+_ask_slots = threading.BoundedSemaphore(2)  # at most two answers being generated at once
+MAX_ASK_BYTES = 20_000
+
+
+def set_asker(fn) -> None:
+    global _asker
+    _asker = fn
 
 
 def _path(report_id: str) -> Path:
@@ -72,6 +80,11 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def do_POST(self) -> None:
+        if self.path.split("?")[0] == "/api/ask":
+            return _handle_ask(self)
+        self._send(404, b'{"error":"not found"}', "application/json")
+
     def do_GET(self) -> None:
         host = (self.headers.get("Host") or "").split(":")[0]
         if host not in ("localhost", "127.0.0.1", "[::1]"):  # blocks DNS-rebinding tricks
@@ -82,12 +95,54 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._send(200, VIEWER.read_bytes(), "text/html; charset=utf-8")
             except OSError:
                 return self._send(500, b"viewer missing", "text/plain")
+        if path == "/api/capabilities":
+            return self._send(200, json.dumps({"ask": _asker is not None}).encode(), "application/json")
         if path.startswith("/api/report/"):
             rec = load(path[len("/api/report/"):])
             if rec is None:
                 return self._send(404, b'{"error":"Not found or expired"}', "application/json")
             return self._send(200, json.dumps(rec).encode("utf-8"), "application/json")
         self._send(200, b"Ink local report server is running.", "text/plain")
+
+
+def _same_origin(handler: BaseHTTPRequestHandler) -> bool:
+    """Reject requests triggered by other websites: the Origin, when sent, must be this server itself."""
+    origin = handler.headers.get("Origin")
+    if not origin:
+        return True
+    return re.fullmatch(r"http://(localhost|127\.0\.0\.1)(:\d+)?", origin) is not None
+
+
+def _handle_ask(self: BaseHTTPRequestHandler) -> None:
+    def reply(status: int, obj: dict) -> None:
+        self._send(status, json.dumps(obj).encode("utf-8"), "application/json")
+
+    host = (self.headers.get("Host") or "").split(":")[0]
+    if host not in ("localhost", "127.0.0.1", "[::1]") or not _same_origin(self):
+        return reply(403, {"error": "forbidden"})
+    if _asker is None:
+        return reply(404, {"error": "Asking is not available"})
+    try:
+        size = int(self.headers.get("Content-Length") or 0)
+        if size <= 0 or size > MAX_ASK_BYTES:
+            return reply(413, {"error": "Question too large"})
+        body = json.loads(self.rfile.read(size).decode("utf-8"))
+        question = str(body.get("question", "")).strip()[:500]
+        record = load(str(body.get("id", "")))
+    except (ValueError, OSError):
+        return reply(400, {"error": "Bad request"})
+    if not question:
+        return reply(400, {"error": "Empty question"})
+    if record is None:
+        return reply(404, {"error": "Report not found or expired"})
+    if not _ask_slots.acquire(blocking=False):
+        return reply(429, {"error": "Busy, try again in a moment"})
+    try:
+        reply(200, {"answer": _asker(record, question)})
+    except Exception as e:  # Gemini busy, bad key, ...
+        reply(502, {"error": f"Could not answer right now ({str(e)[:100]})"})
+    finally:
+        _ask_slots.release()
 
 
 def ensure_started() -> int:

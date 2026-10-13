@@ -1,6 +1,7 @@
 """The floating circular "Ink" bubble with a 360-degree radial menu."""
 
 import math
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QEasingCurve, QPointF, QRectF, Qt, QTimer, QVariantAnimation, Signal
@@ -16,8 +17,10 @@ STATE_COLOR = {"idle": "#64748b", "recording": "#ef4444", "paused": "#f59e0b", "
 
 ACTIONS = {
     "idle": [("play", "Start listening"), ("settings", "Settings"), ("close", "Close Ink")],
-    "recording": [("pause", "Pause"), ("stop", "Stop and create report"), ("settings", "Settings"), ("close", "Close Ink")],
-    "paused": [("play", "Resume"), ("stop", "Stop and create report"), ("settings", "Settings"), ("close", "Close Ink")],
+    "recording": [("pause", "Pause"), ("stop", "Stop and create report"), ("notes", "Catch me up"),
+                  ("star", "Bookmark this moment"), ("settings", "Settings"), ("close", "Close Ink")],
+    "paused": [("play", "Resume"), ("stop", "Stop and create report"), ("notes", "Catch me up"),
+               ("star", "Bookmark this moment"), ("settings", "Settings"), ("close", "Close Ink")],
     "processing": [("settings", "Settings"), ("close", "Close Ink (after the report is saved)")],
 }
 
@@ -60,6 +63,7 @@ class Bubble(QWidget):
         self.hover = -1
         self._btns: list[tuple[str, str, QPointF]] = []
         self._press = None
+        self._flash = ("", 0.0)  # (ring colour, until monotonic time)
         self._dragged = False
         self._logo = logo_pixmap(CORE * 2)
         self.resize(COLLAPSED, COLLAPSED)
@@ -79,6 +83,12 @@ class Bubble(QWidget):
         if self.expanded:
             self._set_expanded(False)
         self.update()
+
+    def flash(self, color: str, seconds: float = 1.4) -> None:
+        """Briefly colour the ring, e.g. gold when a moment is bookmarked."""
+        self._flash = (color, time.monotonic() + seconds)
+        self.update()
+        QTimer.singleShot(int(seconds * 1000) + 60, self.update)
 
     def _actions(self):
         return ACTIONS.get(self.state, ACTIONS["idle"])
@@ -151,6 +161,8 @@ class Bubble(QWidget):
         p.restore()
 
         ring = QColor(STATE_COLOR.get(self.state, "#64748b"))
+        if time.monotonic() < self._flash[1]:
+            ring = QColor(self._flash[0])
         if self.state == "recording":
             ring.setAlphaF(0.55 + 0.45 * (0.5 + 0.5 * math.sin(self.phase)))
         pen = QPen(ring, 4)

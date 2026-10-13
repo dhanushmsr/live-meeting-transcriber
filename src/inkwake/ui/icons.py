@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QAbstractButton
 
 COLORS = {
     "play": "#22c55e", "pause": "#f59e0b", "stop": "#ef4444", "settings": "#94a3b8",
-    "cc": "#38bdf8", "translate": "#a78bfa", "eye": "#2dd4bf", "check": "#22c55e", "close": "#ef4444", "quit": "#f87171", "people": "#fbbf24",
+    "cc": "#38bdf8", "translate": "#a78bfa", "eye": "#2dd4bf", "check": "#22c55e", "close": "#ef4444", "quit": "#f87171", "people": "#fbbf24", "notes": "#60a5fa", "star": "#fbbf24", "share": "#34d399",
 }
 
 
@@ -65,6 +65,32 @@ def draw_icon(p: QPainter, kind: str, r: QRectF, color: QColor) -> None:
     elif kind == "people":
         p.drawEllipse(QPointF(c.x(), c.y() - s * 0.1), s * 0.1, s * 0.1)
         p.drawArc(QRectF(c.x() - s * 0.2, c.y() + s * 0.04, s * 0.4, s * 0.34), 0, 180 * 16)
+    elif kind == "notes":  # a page with text lines
+        p.drawRoundedRect(QRectF(c.x() - s * 0.2, c.y() - s * 0.27, s * 0.4, s * 0.54), s * 0.06, s * 0.06)
+        for dy in (-0.12, 0.0, 0.12):
+            p.drawLine(QPointF(c.x() - s * 0.11, c.y() + s * dy), QPointF(c.x() + s * 0.11, c.y() + s * dy))
+    elif kind == "share":  # cloud with an up arrow
+        cloud = QPainterPath()
+        cloud.moveTo(c.x() - s * 0.24, c.y() + s * 0.12)
+        cloud.cubicTo(c.x() - s * 0.4, c.y() + s * 0.12, c.x() - s * 0.4, c.y() - s * 0.1, c.x() - s * 0.2, c.y() - s * 0.1)
+        cloud.cubicTo(c.x() - s * 0.16, c.y() - s * 0.3, c.x() + s * 0.2, c.y() - s * 0.3, c.x() + s * 0.22, c.y() - s * 0.06)
+        cloud.cubicTo(c.x() + s * 0.42, c.y() - s * 0.06, c.x() + s * 0.42, c.y() + s * 0.12, c.x() + s * 0.24, c.y() + s * 0.12)
+        p.drawPath(cloud)
+        p.drawLine(QPointF(c.x(), c.y() + s * 0.06), QPointF(c.x(), c.y() - s * 0.1))
+        p.drawPolyline([QPointF(c.x() - s * 0.07, c.y() - s * 0.03), QPointF(c.x(), c.y() - s * 0.11), QPointF(c.x() + s * 0.07, c.y() - s * 0.03)])
+    elif kind == "star":
+        pts = []
+        for i in range(10):
+            ang = -math.pi / 2 + i * math.pi / 5
+            rad = s * (0.3 if i % 2 == 0 else 0.13)
+            pts.append(QPointF(c.x() + math.cos(ang) * rad, c.y() + math.sin(ang) * rad))
+        poly = QPainterPath()
+        poly.moveTo(pts[0])
+        for pt in pts[1:]:
+            poly.lineTo(pt)
+        poly.closeSubpath()
+        p.setBrush(color)
+        p.drawPath(poly)
     elif kind == "check":
         p.drawPolyline([QPointF(c.x() - s * 0.2, c.y()), QPointF(c.x() - s * 0.05, c.y() + s * 0.16),
                         QPointF(c.x() + s * 0.22, c.y() - s * 0.15)])

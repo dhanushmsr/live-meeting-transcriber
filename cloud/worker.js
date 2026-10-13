@@ -66,13 +66,21 @@ function sanitize(body) {
       key_points: list(a.key_points, 200).map((x) => str(x, 1000)),
       decisions: list(a.decisions, 200).map((x) => str(x, 1000)),
       follow_ups: list(a.follow_ups, 200).map((x) => str(x, 1000)),
+      open_questions: list(a.open_questions, 200).map((x) => str(x, 1000)),
+      chapters: list(a.chapters, 100).map((c) => ({ start: str(c && c.start, 12), title: str(c && c.title, 300), summary: str(c && c.summary, 1000) })),
+      follow_up_email: {
+        subject: str(a.follow_up_email && a.follow_up_email.subject, 300),
+        body: str(a.follow_up_email && a.follow_up_email.body, 8000),
+      },
       action_items: list(a.action_items, 200).map((x) => ({ task: str(x && x.task, 1000), owner: str(x && x.owner, 120) })),
     },
+    bookmarks: list(body.bookmarks, 200).map((b) => ({ t: Number(b && b.t) || 0, text: str(b && b.text, 300) })),
     transcript: list(body.transcript, MAX_TRANSCRIPT_LINES).map((l) => ({
       t: Number(l && l.t) || 0,
       speaker: str(l && l.speaker, 120),
       text: str(l && l.text, 4000),
       translation: str(l && l.translation, 4000),
+      mention: l && l.mention === true,
     })),
     talk,
   };
@@ -142,7 +150,8 @@ export default {
       return html(VIEWER);
     }
 
-    // Root info
+    // Anything else is a 404; "/" explains what this server is
+    if (url.pathname !== "/") return json({ error: "Not found" }, 404);
     return new Response(
       "Inkwake 72-Hour Ephemeral Meeting Report Server is running.\nEndpoints: POST /api/report, GET /r/:id",
       { headers: { "Content-Type": "text/plain", ...SECURITY_HEADERS } }

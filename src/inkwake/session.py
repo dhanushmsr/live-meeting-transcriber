@@ -1,6 +1,7 @@
 """A meeting session: capture -> live streams -> captions -> report."""
 
 import asyncio
+import re
 import threading
 import time
 from collections import defaultdict
@@ -10,7 +11,7 @@ from google import genai
 from PySide6.QtCore import QObject, Signal
 
 from . import audio, config, report
-from .gemini import Gemini
+from .gemini import Gemini, stamp
 from .live import LiveStream
 from .speakers import SpeakerWatcher
 
@@ -19,7 +20,10 @@ class Session(QObject):
     caption = Signal(str, str, bool)  # speaker, text so far, is_final
     state_changed = Signal(str)       # recording | paused | processing | idle
     finished = Signal(str)            # report path
-    cloud_link_ready = Signal(str)    # 72-hour cloud report URL
+    cloud_link_ready = Signal(str)    # link to the online report
+    notes_ready = Signal(dict)        # live catch-up notes (gist, decisions, action items, ...)
+    mention = Signal(str, str)        # speaker, line: someone said the user's name
+    bookmarked = Signal(float)        # meeting time (s) of a bookmark
     notice = Signal(str)
     failed = Signal(str)
 
@@ -36,6 +40,11 @@ class Session(QObject):
         self.talk: dict[str, dict[int, float]] = defaultdict(lambda: defaultdict(float))  # speaker -> minute -> sec
         self.languages: set[str] = set()
         self.participants: set[str] = set()
+        self.bookmarks: list[dict] = []
+        self.notes: dict = {}
+        self._notes_lines = 0                 # transcript lines already covered by self.notes
+        self._notes_lock = threading.Lock()
+        self._done = False
 
     # ---- control -------------------------------------------------------
     def start(self, platform: str = "", title: str = "") -> None:
@@ -112,10 +121,12 @@ class Session(QObject):
             self.streams.append(st)
         jobs = [st.run() for st in self.streams]
         self.watcher = watcher
-        watch_task = asyncio.create_task(watcher.run()) if watcher else None
+        watch_task = asyncio.create_task(watcher.run()) if watcher else None  # noqa: F841
+        notes_task = asyncio.create_task(self._notes_loop())  # noqa: F841
         try:
             await asyncio.gather(*jobs)
         finally:
+            self._done = True
             if watcher:
                 watcher.stop()
                 self.participants |= watcher.participants
@@ -129,11 +140,77 @@ class Session(QObject):
 
     def _segment(self, speaker: str, t: float, src: str, out: str, mono: float = 0.0) -> None:
         speaker = self._name(speaker)
-        self.transcript.append({"t": t, "speaker": speaker, "text": src, "translation": out, "mono": mono})
-        self.caption.emit(speaker, (out if self.settings.translate else src) or src or out, True)
+        line = {"t": t, "speaker": speaker, "text": src, "translation": out, "mono": mono}
+        shown = (out if self.settings.translate else src) or src or out
+        if self._mentions_me(speaker, f"{src} {out}"):
+            line["mention"] = True
+            self.mention.emit(speaker, shown)
+        self.transcript.append(line)
+        self.caption.emit(speaker, shown, True)
+
+    def _mentions_me(self, speaker: str, text: str) -> bool:
+        """True when someone else says the user's name (first name or full name)."""
+        name = (self.settings.name or "").strip()
+        if not name or speaker == self._name("You"):
+            return False
+        first = name.split()[0]
+        words = {name, first} if len(first) >= 3 else {name}
+        return any(re.search(rf"(?<!\w){re.escape(w)}(?!\w)", text, re.IGNORECASE) for w in words)
 
     def _talk(self, speaker: str, minute: int, secs: float) -> None:
         self.talk[self._name(speaker)][minute] += secs
+
+    # ---- live helpers: catch-up notes and bookmarks ---------------------
+    def meeting_time(self) -> float:
+        return max((st.offset for st in self.streams), default=0.0)
+
+    def transcript_text(self) -> str:
+        lines = sorted(self.transcript, key=lambda x: x["t"])
+        return "\n".join(f"[{stamp(x['t'])}] {x['speaker']}: {x['text'] or x['translation']}" for x in lines)
+
+    def bookmark(self) -> None:
+        """Flag the current moment; it appears under Highlights in the report."""
+        t = self.meeting_time()
+        last = self.transcript[-1]["text"] if self.transcript else ""
+        self.bookmarks.append({"t": t, "text": last[:200]})
+        self.bookmarked.emit(t)
+
+    def recent_lines(self, n: int = 8) -> list[dict]:
+        lines = sorted(self.transcript, key=lambda x: x["t"])[-n:]
+        return [{"t": x["t"], "speaker": x["speaker"], "text": x["text"] or x["translation"]} for x in lines]
+
+    def request_catch_up(self) -> None:
+        """Show the latest lines at once (no AI needed), then refresh the AI notes in the background."""
+        self.notes_ready.emit({**self.notes, "recent": self.recent_lines(), "updating": True})
+        threading.Thread(target=self._refresh_notes, args=(True,), daemon=True).start()
+
+    def _refresh_notes(self, force: bool = False) -> None:
+        with self._notes_lock:
+            n = len(self.transcript)
+            if n == 0:
+                self.notes_ready.emit({"gist": "Nothing has been said yet.", "recent": [], "updating": False})
+                return
+            if n == self._notes_lines and self.notes and not force:
+                return
+            try:
+                s = self.settings
+                notes = Gemini(s.api_key, s.report_model, s.fallback_model).live_notes(
+                    self.transcript_text(), self.notes, s.name)
+            except Exception as e:
+                self.notice.emit(f"Catch-up notes failed: {str(e)[:120]}")
+                self.notes_ready.emit({**self.notes, "recent": self.recent_lines(), "updating": False, "error": True})
+                return
+            self.notes, self._notes_lines = notes, n
+            self.notes_ready.emit({**notes, "recent": self.recent_lines(), "updating": False})
+
+    async def _notes_loop(self) -> None:
+        """Keep the notes warm so the catch-up panel opens instantly with fresh content."""
+        last = time.monotonic()
+        while not self._done:
+            await asyncio.sleep(5)
+            if self.state == "recording" and time.monotonic() - last > 90 and len(self.transcript) - self._notes_lines >= 4:
+                last = time.monotonic()
+                await asyncio.to_thread(self._refresh_notes)
 
     # ---- report --------------------------------------------------------
     def _finalize(self) -> None:
@@ -150,8 +227,9 @@ class Session(QObject):
         s = self.settings
         if text:
             try:
+                marks = [f"{stamp(b['t'])} {b['text'][:100]}".strip() for b in self.bookmarks]
                 analysis = Gemini(s.api_key, s.report_model, s.fallback_model).analyse(
-                    text, s.name, self.title or "Meeting")
+                    text, s.name, self.title or "Meeting", marks)
                 self.languages.update(analysis.get("languages") or [])
             except Exception as e:
                 self.notice.emit(f"Analysis failed, report will contain the transcript only: {e}")
@@ -163,7 +241,8 @@ class Session(QObject):
         path = report.build(
             settings=s, title=self.title, platform=self.platform, started=self.started_at,
             minutes=minutes, transcript=self.transcript, talk=self.talk, analysis=analysis,
-            languages=sorted(self.languages), participants=sorted(self.participants), meetings_total=n_past + 1, minutes_total=past_minutes + minutes,
+            languages=sorted(self.languages), participants=sorted(self.participants), meetings_total=n_past + 1,
+            minutes_total=past_minutes + minutes, bookmarks=self.bookmarks,
         )
         config.add_history({
             "title": self.title, "started": self.started_at.isoformat(timespec="seconds"),
@@ -172,7 +251,7 @@ class Session(QObject):
         link = self._publish(
             title=self.title, started=self.started_at, minutes=minutes, platform=self.platform,
             transcript=self.transcript, talk=self.talk, analysis=analysis,
-            participants=sorted(self.participants), languages=sorted(self.languages),
+            participants=sorted(self.participants), languages=sorted(self.languages), bookmarks=self.bookmarks,
         )
         if link:
             self.cloud_link_ready.emit(link)
@@ -190,6 +269,7 @@ class Session(QObject):
             "analysis": data.get("analysis"),
             "participants": data.get("participants"),
             "languages": data.get("languages"),
+            "bookmarks": data.get("bookmarks") or [],
             "transcript": [{k: v for k, v in line.items() if k != "mono"} for line in data.get("transcript", [])],
             "talk": {spk: dict(mins) for spk, mins in data.get("talk", {}).items()},
         }
@@ -197,7 +277,8 @@ class Session(QObject):
     def _publish(self, **data) -> str | None:
         """Cloud server if one is configured, otherwise (or if it fails) the local server on this computer."""
         payload = self._payload(**data)
-        if self.settings.cloud_report_url:
+        share = self.settings.share_online or getattr(self.settings, "env_share", False)
+        if share and self.settings.cloud_report_url:  # opt-in: nothing leaves the computer otherwise
             url = self._upload_cloud(payload)
             if url:
                 return url

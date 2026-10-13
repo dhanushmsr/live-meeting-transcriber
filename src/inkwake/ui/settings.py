@@ -1,7 +1,7 @@
 """Settings: simple profile, Gemini key, captions and translation. Icon buttons only."""
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QComboBox, QDialog, QHBoxLayout, QLineEdit, QVBoxLayout
+from PySide6.QtWidgets import QComboBox, QDialog, QHBoxLayout, QLineEdit, QMessageBox, QVBoxLayout
 
 from ..config import DEFAULT_CLOUD_URL, LANGUAGES, Settings
 from .icons import IconButton
@@ -21,7 +21,7 @@ class SettingsDialog(QDialog):
         self.s = settings
         self.setWindowTitle("Ink")
         self.setStyleSheet(STYLE)
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(480)
         self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
 
         self.name = QLineEdit(settings.name)
@@ -48,6 +48,8 @@ class SettingsDialog(QDialog):
         self.tr.setChecked(settings.translate)
         self.names = IconButton("people", "Read participant names from the meeting screen", checkable=True)
         self.names.setChecked(settings.read_names)
+        self.share = IconButton("share", "Share reports online (uploads each finished report to Ink's report server, link works for 72 hours)", checkable=True)
+        self.share.setChecked(settings.share_online)
         self.auto = IconButton("eye", "Detect meetings automatically", checkable=True)
         self.auto.setChecked(settings.auto_detect)
         ok = IconButton("check", "Save")
@@ -69,6 +71,7 @@ class SettingsDialog(QDialog):
         toggles.addWidget(self.tr)
         toggles.addWidget(self.auto)
         toggles.addWidget(self.names)
+        toggles.addWidget(self.share)
         toggles.addWidget(self.lang, 1)
         lay.addLayout(toggles)
         row = QHBoxLayout()
@@ -76,6 +79,18 @@ class SettingsDialog(QDialog):
         row.addWidget(no)
         row.addWidget(ok)
         lay.addLayout(row)
+
+    def _confirm_share(self) -> bool:
+        """Turning sharing on sends the transcript and summary to a server, so ask once, plainly."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Share reports online?")
+        box.setIcon(QMessageBox.Question)
+        box.setText("Each finished report (summary, transcript, names) will be uploaded to Ink's report server so you "
+                    "get a link you can send to others. Anyone with the link can read it for 72 hours, then it is "
+                    "deleted.\n\nOnly turn this on if everyone in your meetings is fine with that.")
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        box.setDefaultButton(QMessageBox.No)
+        return box.exec() == QMessageBox.Yes
 
     def _save(self) -> None:
         s = self.s
@@ -86,6 +101,9 @@ class SettingsDialog(QDialog):
             s.cloud_report_url = self.cloud_url.text().strip()
         s.captions, s.translate, s.auto_detect = self.cc.isChecked(), self.tr.isChecked(), self.auto.isChecked()
         s.read_names = self.names.isChecked()
+        if self.share.isChecked() and not s.share_online and not self._confirm_share():
+            self.share.setChecked(False)
+        s.share_online = self.share.isChecked()
         s.target_language = self.lang.currentText()
         s.save()
         self.accept()

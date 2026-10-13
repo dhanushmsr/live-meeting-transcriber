@@ -9,12 +9,14 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QAction, QGuiApplication, QIcon
 from PySide6.QtWidgets import QApplication, QDialog, QHBoxLayout, QLabel, QMenu, QSystemTrayIcon, QVBoxLayout
 
-from . import detector
+from . import detector, localserver
+from .gemini import Gemini, stamp
 from .config import Settings, reports_dir
 from .session import Session
 from .ui.bubble import Bubble, logo_pixmap
 from .ui.captions import CaptionBar
 from .ui.icons import IconButton
+from .ui.notes import NotesPanel
 from .ui.settings import SettingsDialog
 
 
@@ -52,6 +54,7 @@ class InkApp:
         self.bubble.action.connect(self.on_action)
         self.bubble.moved.connect(self._remember_position)
         self.captions = CaptionBar()
+        self.notes_panel = NotesPanel()
 
         self.tray = QSystemTrayIcon(QIcon(logo_pixmap(64)))
         menu = QMenu()
@@ -65,7 +68,7 @@ class InkApp:
         self.tray.show()
 
         try:
-            from . import localserver
+            localserver.set_asker(self._answer)
             localserver.ensure_started()  # keeps earlier report links working while Ink runs
         except Exception as e:
             print(f"[ink] local report server not started: {e}", file=sys.stderr)
@@ -111,6 +114,11 @@ class InkApp:
             self.session.pause()
         elif key == "stop" and self.session:
             self.session.stop()
+        elif key == "notes" and self._busy() and self.session:
+            self.notes_panel.show_near(self.bubble.geometry().center())
+            self.session.request_catch_up()
+        elif key == "star" and self.session:
+            self.session.bookmark()
         elif key == "close":
             self.quit()
 
@@ -148,6 +156,9 @@ class InkApp:
         self.session.failed.connect(self._on_failed)
         self.session.finished.connect(self._on_finished)
         self.session.cloud_link_ready.connect(self._on_cloud_link)
+        self.session.notes_ready.connect(self.notes_panel.set_notes)
+        self.session.bookmarked.connect(self._on_bookmark)
+        self.session.mention.connect(self._on_mention)
         self.session.start(platform, title)
 
     # ---- session callbacks ---------------------------------------------
@@ -155,6 +166,8 @@ class InkApp:
         self.bubble.set_state(state)
         if state != "recording":
             self.captions.clear()
+        if state == "idle":
+            self.notes_panel.hide()
 
     def _on_caption(self, speaker: str, text: str, final: bool) -> None:
         if self.settings.captions:
@@ -173,6 +186,24 @@ class InkApp:
         else:
             _reveal(path)
             self._notify(f"Report saved to {folder}: {os.path.basename(path)}")
+
+    def _answer(self, record: dict, question: str) -> str:
+        """Answer a question about one saved meeting (called by the local report server)."""
+        s = Settings.load()
+        text = "\n".join(
+            f"[{stamp(float(x.get('t', 0)))}] {x.get('speaker', '')}: {x.get('text') or x.get('translation', '')}"
+            for x in record.get("transcript", []))
+        return Gemini(s.api_key, s.report_model, s.fallback_model).ask(question, text, record.get("analysis"))
+
+    def _on_bookmark(self, t: float) -> None:
+        self.bubble.flash("#fbbf24")
+        self._notify(f"Moment bookmarked at {int(t // 60):02d}:{int(t % 60):02d}")
+
+    def _on_mention(self, speaker: str, line: str) -> None:
+        """Someone said the user's name: make it impossible to miss, and remember it in the report."""
+        self.qt.beep()
+        self.bubble.flash("#a78bfa", 3.0)
+        self._notify(f"{speaker} mentioned you: {line[:120]}")
 
     def _on_cloud_link(self, url: str) -> None:
         import webbrowser

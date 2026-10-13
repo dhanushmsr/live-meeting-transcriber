@@ -1,0 +1,55 @@
+name: Deploy report server
+
+# Publishes cloud/worker.js (and the shared report page) to Cloudflare Workers whenever they change on main.
+# One-time setup is described in cloud/README.md ("Deploy from GitHub Actions"). Until the repository
+# variable KV_NAMESPACE_ID exists this workflow is skipped, so it is safe to leave in the repo.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cloud/**"
+      - "src/inkwake/assets/viewer.html"
+      - ".github/workflows/deploy-worker.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-report-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ vars.KV_NAMESPACE_ID != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use your KV namespace id
+        env:
+          KV_ID: ${{ vars.KV_NAMESPACE_ID }}
+        run: sed -i "s/REPLACE_WITH_YOUR_KV_NAMESPACE_ID/${KV_ID}/" cloud/wrangler.toml
+
+      - name: Deploy to Cloudflare
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloud
+          command: deploy
+
+      - name: Smoke test the live server (upload a report, open it, read it back)
+        env:
+          URL: ${{ steps.deploy.outputs.deployment-url }}
+          TOKEN: ${{ secrets.INGEST_TOKEN }}
+        run: |
+          set -euo pipefail
+          auth=()
+          if [ -n "${TOKEN:-}" ]; then auth=(-H "Authorization: Bearer ${TOKEN}"); fi
+          resp=$(curl -fsS -X POST "${URL}/api/report" -H "Content-Type: application/json" "${auth[@]}" \
+            -d '{"title":"CI smoke test","analysis":{"summary":"ok"},"transcript":[],"talk":{}}')
+          echo "$resp"
+          id=$(echo "$resp" | python3 -c 'import sys, json; print(json.load(sys.stdin)["id"])')
+          curl -fsS "${URL}/r/${id}" | grep -q "Online Doc"
+          curl -fsS "${URL}/api/report/${id}" | grep -q "CI smoke test"
+          echo "live server OK: ${URL}/r/${id}"

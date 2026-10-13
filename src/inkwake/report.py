@@ -61,7 +61,7 @@ def _bullets(doc, items) -> None:
 
 
 def build(*, settings, title, platform, started: datetime, minutes: float, transcript, talk, analysis,
-          languages, meetings_total: int, minutes_total: float, participants=()) -> Path:
+          languages, meetings_total: int, minutes_total: float, participants=(), bookmarks=()) -> Path:
     doc = Document()
     doc.styles["Normal"].font.name = "Calibri"
     doc.styles["Normal"].font.size = Pt(11)
@@ -91,6 +91,29 @@ def build(*, settings, title, platform, started: datetime, minutes: float, trans
     _heading(doc, "Summary")
     doc.add_paragraph(analysis.get("summary") or "-")
 
+    if analysis.get("chapters"):
+        _heading(doc, "Timeline")
+        for ch in analysis["chapters"]:
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(f"{ch.get('start', '')}  {ch.get('title', '')}").bold = True
+            if ch.get("summary"):
+                p.add_run(f" - {ch['summary']}")
+
+    mentions = [x for x in transcript if x.get("mention")]
+    if bookmarks or mentions:
+        _heading(doc, "Highlights")
+        for b in bookmarks:
+            m, sec = divmod(int(b.get("t", 0)), 60)
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(f"[{m:02d}:{sec:02d}] Bookmarked").bold = True
+            if b.get("text"):
+                p.add_run(f": {b['text']}")
+        for x in mentions:
+            m, sec = divmod(int(x.get("t", 0)), 60)
+            p = doc.add_paragraph(style="List Bullet")
+            p.add_run(f"[{m:02d}:{sec:02d}] You were mentioned by {x['speaker']}").bold = True
+            p.add_run(f": {x.get('text') or x.get('translation', '')}")
+
     if analysis.get("topics"):
         _heading(doc, "What was discussed")
         for tp in analysis["topics"]:
@@ -115,6 +138,16 @@ def build(*, settings, title, platform, started: datetime, minutes: float, trans
     if analysis.get("follow_ups"):
         _heading(doc, "Suggested follow-ups")
         _bullets(doc, analysis["follow_ups"])
+
+    if analysis.get("open_questions"):
+        _heading(doc, "Open questions")
+        _bullets(doc, analysis["open_questions"])
+    email = analysis.get("follow_up_email") or {}
+    if email.get("body"):
+        _heading(doc, "Draft follow-up email")
+        doc.add_paragraph().add_run(f"Subject: {email.get('subject', '')}").bold = True
+        for para in str(email["body"]).split("\n"):
+            doc.add_paragraph(para)
 
     if totals:
         _heading(doc, "Speaking analysis")

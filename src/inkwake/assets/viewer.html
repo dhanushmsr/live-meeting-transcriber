@@ -210,6 +210,27 @@
       h1.doc-title { font-size: 24px; }
     }
   
+    .tl-row { display: flex; gap: 14px; padding: 10px 0; border-bottom: 1px dashed var(--border); }
+    .tl-time { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: var(--pill-bg); color: var(--pill-text);
+               border-radius: 6px; padding: 2px 8px; height: fit-content; white-space: nowrap; }
+    .tl-title { font-weight: 600; font-size: 15px; }
+    .tl-sum { font-size: 14px; color: #475569; }
+    .hl { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 8px; margin-bottom: 8px;
+          background: #fffbeb; border: 1px solid #fde68a; font-size: 14px; }
+    .hl.mention { background: #f5f3ff; border-color: #ddd6fe; }
+    .hl b { white-space: nowrap; }
+    .email-card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-top: 12px; }
+    .email-subject { padding: 10px 16px; background: var(--card-bg); font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--border); }
+    .email-body { white-space: pre-wrap; padding: 14px 16px; font-size: 14px; color: #334155; margin: 0; font-family: inherit; }
+    .email-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid var(--border); background: #fafafa; }
+    .search-box { width: 100%; padding: 9px 14px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 14px; margin-top: 4px; }
+    .transcript-row.mention { background: #f5f3ff; margin: 0 -10px; padding: 10px; border-radius: 6px; }
+    .badge-me { font-size: 11px; font-weight: 700; color: #6d28d9; background: #ede9fe; padding: 1px 7px; border-radius: 10px; margin-left: 6px; }
+    .ask-card { border: 1px solid #bfdbfe; background: #eff6ff; border-radius: 12px; padding: 18px 20px; margin-top: 28px; }
+    .ask-row { display: flex; gap: 8px; margin-top: 10px; }
+    .ask-row input { flex: 1; padding: 9px 14px; border: 1px solid #bfdbfe; border-radius: 8px; font: inherit; font-size: 14px; }
+    .ask-answer { margin-top: 12px; white-space: pre-wrap; font-size: 14px; color: #1e293b; line-height: 1.6; }
+    .ask-q { margin-top: 12px; font-weight: 600; font-size: 14px; }
     .expired-card {
       max-width: 440px; margin: 18vh auto 0; text-align: center; background: var(--paper);
       border: 1px solid var(--border); border-radius: 16px; padding: 40px 32px;
@@ -347,6 +368,19 @@
       section(root, "Executive summary");
       add(root, h("div", "summary-box", a.summary || "No summary available."));
 
+      if ((a.chapters || []).length) {
+        section(root, "Timeline");
+        a.chapters.forEach(c => add(root, add(h("div", "tl-row"), h("span", "tl-time", c.start || ""),
+          add(h("div"), h("div", "tl-title", c.title || ""), h("div", "tl-sum", c.summary || "")))));
+      }
+
+      const marks = d.bookmarks || [], mentioned = (d.transcript || []).filter(l => l.mention);
+      if (marks.length || mentioned.length) {
+        section(root, "Highlights");
+        marks.forEach(b => add(root, add(h("div", "hl"), h("b", null, "\u2B50 " + stamp(b.t)), h("span", null, b.text ? "Bookmarked: " + b.text : "Bookmarked moment"))));
+        mentioned.forEach(l => add(root, add(h("div", "hl mention"), h("b", null, "@ " + stamp(l.t)), h("span", null, (l.speaker || "Someone") + " mentioned you: " + (l.text || l.translation || "")))));
+      }
+
       if ((a.topics || []).length) {
         section(root, "What was discussed");
         a.topics.forEach(t => add(root, add(h("div", "topic-card"), h("div", "topic-title", t.title), h("div", "topic-detail", t.detail))));
@@ -387,6 +421,29 @@
         add(root, ul);
       }
 
+      if ((a.open_questions || []).length) {
+        section(root, "Open questions");
+        const ul = h("ul", "styled-list");
+        a.open_questions.forEach(x => ul.appendChild(h("li", null, x)));
+        add(root, ul);
+      }
+
+      const email = a.follow_up_email || {};
+      if (email.body) {
+        section(root, "Draft follow-up email");
+        const card = h("div", "email-card");
+        const actions = h("div", "email-actions");
+        const mk = (label, fn) => { const b = h("button", "btn", label); b.onclick = fn; return b; };
+        actions.appendChild(mk("Copy email", async () => {
+          try { await navigator.clipboard.writeText("Subject: " + (email.subject || "") + "\n\n" + email.body); showToast("Email copied"); }
+          catch (e) { showToast("Select the text and copy it"); }
+        }));
+        actions.appendChild(mk("Open in email app", () => { location.href = "mailto:?subject=" + encodeURIComponent(email.subject || "") + "&body=" + encodeURIComponent(email.body); }));
+        actions.appendChild(mk("Send via WhatsApp", () => { window.open("https://wa.me/?text=" + encodeURIComponent((email.subject ? email.subject + "\n\n" : "") + email.body), "_blank", "noopener"); }));
+        add(card, h("div", "email-subject", email.subject || "(no subject)"), h("pre", "email-body", email.body), actions);
+        add(root, card);
+      }
+
       const totals = talkTotals(), whole = Object.values(totals).reduce((x, y) => x + y, 0) || 1;
       if (Object.keys(totals).length) {
         section(root, "Speaking share");
@@ -406,17 +463,59 @@
         add(root, add(h("div"), bar, legend));
       }
 
+      const slot = h("div"); slot.id = "askSlot"; root.appendChild(slot);
+
       if ((d.transcript || []).length) {
         section(root, "Full transcript");
+        const search = h("input", "search-box"); search.type = "search"; search.placeholder = "Search the transcript...";
+        root.appendChild(search);
         const stream = h("div", "transcript-stream");
+        const rows = [];
         d.transcript.forEach(l => {
           const body = add(h("div", "transcript-body"), h("span", "transcript-spk", (l.speaker || "Speaker") + ":"), h("span", null, l.text || ""));
-          if (l.translation) body.appendChild(h("div", "transcript-tr", "↳ " + l.translation));
-          stream.appendChild(add(h("div", "transcript-row"), h("span", "transcript-time", "[" + stamp(l.t) + "]"), body));
+          if (l.mention) body.appendChild(h("span", "badge-me", "mentioned you"));
+          if (l.translation) body.appendChild(h("div", "transcript-tr", "\u21B3 " + l.translation));
+          const row = add(h("div", "transcript-row" + (l.mention ? " mention" : "")), h("span", "transcript-time", "[" + stamp(l.t) + "]"), body);
+          rows.push([row, ((l.speaker || "") + " " + (l.text || "") + " " + (l.translation || "")).toLowerCase()]);
+          stream.appendChild(row);
+        });
+        search.addEventListener("input", () => {
+          const q = search.value.trim().toLowerCase();
+          rows.forEach(([row, text]) => { row.style.display = !q || text.includes(q) ? "" : "none"; });
         });
         add(root, stream);
       }
+      initAsk();
       startCountdown();
+    }
+
+    // "Ask this meeting": only offered when the server can answer (Ink's local server, which has the user's own key)
+    async function initAsk() {
+      let ok = false;
+      try { ok = (await (await fetch("/api/capabilities", { cache: "no-store" })).json()).ask === true; } catch (e) { /* cloud: no */ }
+      const slot = document.getElementById("askSlot");
+      if (!ok || !slot) return;
+      const input = h("input"); input.type = "text"; input.maxLength = 500; input.placeholder = "e.g. What did we decide about pricing? Who owns the release notes?";
+      const btn = h("button", "btn btn-primary", "Ask");
+      const out = h("div");
+      const send = async () => {
+        const q = input.value.trim(); if (!q) return;
+        btn.disabled = true; btn.textContent = "Thinking...";
+        const qEl = h("div", "ask-q", q), aEl = h("div", "ask-answer", "...");
+        out.prepend(aEl); out.prepend(qEl);
+        try {
+          const id = location.pathname.split("/").filter(Boolean).pop();
+          const r = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, question: q }) });
+          const j = await r.json();
+          aEl.textContent = j.answer || j.error || "No answer";
+        } catch (e) { aEl.textContent = "Could not get an answer: " + e.message; }
+        btn.disabled = false; btn.textContent = "Ask"; input.value = "";
+      };
+      btn.onclick = send;
+      input.addEventListener("keydown", e => { if (e.key === "Enter") send(); });
+      const card = h("div", "ask-card");
+      add(card, h("div", "tl-title", "Ask about this meeting"), h("div", "tl-sum", "Answers come only from this meeting's transcript."), add(h("div", "ask-row"), input, btn), out);
+      slot.appendChild(card);
     }
 
     async function shareReport() {
@@ -484,10 +583,20 @@
       if (reportData.platform) L.push("- **Platform:** " + reportData.platform);
       if ((reportData.participants || []).length) L.push("- **Participants:** " + reportData.participants.join(", "));
       L.push("", "## Summary", "", a.summary || "-", "");
+      if ((a.chapters || []).length) { L.push("## Timeline", ""); a.chapters.forEach(c => L.push("- **" + (c.start || "") + " " + (c.title || "") + "** - " + (c.summary || ""))); L.push(""); }
+      const marksMd = reportData.bookmarks || [], menMd = (reportData.transcript || []).filter(l => l.mention);
+      if (marksMd.length || menMd.length) {
+        L.push("## Highlights", "");
+        marksMd.forEach(b => L.push("- \u2B50 [" + stamp(b.t) + "] " + (b.text || "Bookmarked moment")));
+        menMd.forEach(l => L.push("- @ [" + stamp(l.t) + "] " + (l.speaker || "") + " mentioned you: " + (l.text || l.translation || "")));
+        L.push("");
+      }
       if ((a.topics || []).length) { L.push("## What was discussed", ""); a.topics.forEach(t => L.push("- **" + t.title + ":** " + t.detail)); L.push(""); }
       if ((a.key_points || []).length) { L.push("## Key points", ""); a.key_points.forEach(k => L.push("- " + k)); L.push(""); }
       if ((a.decisions || []).length) { L.push("## Decisions", ""); a.decisions.forEach(d => L.push("- " + d)); L.push(""); }
       if ((a.action_items || []).length) { L.push("## Action items", ""); a.action_items.forEach(i => L.push("- [ ] " + i.task + (i.owner ? " (" + i.owner + ")" : ""))); L.push(""); }
+      if ((a.open_questions || []).length) { L.push("## Open questions", ""); a.open_questions.forEach(q => L.push("- " + q)); L.push(""); }
+      if ((a.follow_up_email || {}).body) { L.push("## Draft follow-up email", "", "**Subject:** " + (a.follow_up_email.subject || ""), "", a.follow_up_email.body, ""); }
       const totals = talkTotals(); const whole = Object.values(totals).reduce((x, y) => x + y, 0) || 1;
       if (Object.keys(totals).length) { L.push("## Speaking time", ""); Object.entries(totals).forEach(([s, v]) => L.push("- " + s + ": " + (v / 60).toFixed(1) + " min (" + Math.round(v / whole * 100) + "%)")); L.push(""); }
       if ((reportData.transcript || []).length) {
@@ -516,6 +625,13 @@
         ] }));
         if ((reportData.participants || []).length) kids.push(new Paragraph({ children: [new TextRun({ text: "Participants: ", bold: true }), new TextRun(reportData.participants.join(", "))] }));
         kids.push(H("Summary"), P(a.summary || "-"));
+        if ((a.chapters || []).length) { kids.push(H("Timeline")); a.chapters.forEach(c => kids.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: (c.start || "") + " " + (c.title || ""), bold: true }), new TextRun(" - " + (c.summary || ""))] }))); }
+        const marksDx = reportData.bookmarks || [], menDx = (reportData.transcript || []).filter(l => l.mention);
+        if (marksDx.length || menDx.length) {
+          kids.push(H("Highlights"));
+          marksDx.forEach(b => kids.push(bullet("[" + stamp(b.t) + "] Bookmarked: " + (b.text || ""))));
+          menDx.forEach(l => kids.push(bullet("[" + stamp(l.t) + "] " + (l.speaker || "") + " mentioned you: " + (l.text || l.translation || ""))));
+        }
         if ((a.topics || []).length) { kids.push(H("What was discussed")); a.topics.forEach(t => kids.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: (t.title || "") + ": ", bold: true }), new TextRun(t.detail || "")] }))); }
         if ((a.key_points || []).length) { kids.push(H("Key points")); a.key_points.forEach(k => kids.push(bullet(k))); }
         if ((a.decisions || []).length) { kids.push(H("Decisions")); a.decisions.forEach(d => kids.push(bullet(d))); }
@@ -525,6 +641,11 @@
             new TableRow({ children: [cell("Task", true), cell("Owner", true)] }),
             ...a.action_items.map(i => new TableRow({ children: [cell(i.task), cell(i.owner || "-")] })),
           ] }));
+        }
+        if ((a.open_questions || []).length) { kids.push(H("Open questions")); a.open_questions.forEach(q => kids.push(bullet(q))); }
+        if ((a.follow_up_email || {}).body) {
+          kids.push(H("Draft follow-up email"), new Paragraph({ children: [new TextRun({ text: "Subject: " + (a.follow_up_email.subject || ""), bold: true })] }));
+          String(a.follow_up_email.body).split("\n").forEach(line => kids.push(P(line)));
         }
         const totals = talkTotals(); const whole = Object.values(totals).reduce((x, y) => x + y, 0) || 1;
         if (Object.keys(totals).length) {
