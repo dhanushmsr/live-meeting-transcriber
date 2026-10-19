@@ -8,669 +8,403 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-
-  <!-- Client-side export libraries -->
   <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-
   <style>
-    :root {
-      --bg: #f8fafc;
-      --paper: #ffffff;
-      --text: #0f172a;
-      --muted: #64748b;
-      --border: #e2e8f0;
-      --accent: #2563eb;
-      --accent-hover: #1d4ed8;
-      --card-bg: #f1f5f9;
-      --pill-bg: #e2e8f0;
-      --pill-text: #334155;
-      --success: #16a34a;
-      --warning: #f59e0b;
-    }
-
+    :root { --bg:#f6f7fb; --paper:#fff; --text:#0f172a; --muted:#64748b; --line:#e2e8f0; --accent:#2563eb; --soft:#eff6ff;
+            --ok:#16a34a; --warn:#b45309; --violet:#6d28d9; }
     * { box-sizing: border-box; }
-    body {
-      margin: 0; padding: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      line-height: 1.6;
-      -webkit-font-smoothing: antialiased;
-    }
+    body { margin:0; background:var(--bg); color:var(--text); font-family:'Inter',-apple-system,"Segoe UI",Roboto,sans-serif;
+           font-size:16px; line-height:1.65; -webkit-font-smoothing:antialiased; }
+    .topbar { position:sticky; top:0; z-index:50; background:rgba(255,255,255,.94); backdrop-filter:blur(10px);
+              border-bottom:1px solid var(--line); padding:10px 20px; display:flex; align-items:center;
+              justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    .brand { font-weight:700; display:flex; gap:8px; align-items:center; }
+    .brand-badge { background:linear-gradient(135deg,#2563eb,#7c3aed); color:#fff; padding:2px 8px; border-radius:6px; font-size:11px; }
+    .actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .btn { display:inline-flex; gap:6px; align-items:center; font:inherit; font-size:13px; font-weight:500; padding:7px 13px;
+           border-radius:8px; border:1px solid var(--line); background:#fff; color:var(--text); cursor:pointer; }
+    .btn:hover { background:#f8fafc; border-color:#cbd5e1; }
+    .btn-primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .btn-primary:hover { background:#1d4ed8; }
+    .btn[disabled] { opacity:.6; cursor:default; }
+    .expiry { background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-size:12px; font-weight:600; padding:4px 11px; border-radius:20px; }
 
-    /* Top Sticky Action Bar */
-    .topbar {
-      position: sticky; top: 0; z-index: 100;
-      background: rgba(255, 255, 255, 0.94);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--border);
-      padding: 12px 24px;
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 16px;
-    }
-    .brand {
-      display: flex; align-items: center; gap: 10px;
-      font-weight: 700; font-size: 16px; color: var(--text);
-    }
-    .brand-badge {
-      background: linear-gradient(135deg, #2563eb, #7c3aed);
-      color: white; padding: 3px 8px; border-radius: 6px; font-size: 11px;
-    }
-    .topbar-actions {
-      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-    }
+    .wrap { max-width:820px; margin:28px auto 90px; padding:0 14px; }
+    .page { background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:44px 52px;
+            box-shadow:0 4px 22px -4px rgba(15,23,42,.06); }
+    h1.title { font-size:32px; line-height:1.2; letter-spacing:-.02em; margin:0 0 8px; }
+    .facts { color:var(--muted); font-size:14px; display:flex; flex-wrap:wrap; gap:4px 14px; margin-bottom:22px; }
+    .facts span + span::before { content:"\00b7"; margin-right:14px; }
 
-    .btn {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-family: inherit; font-size: 13px; font-weight: 500;
-      padding: 7px 14px; border-radius: 8px; cursor: pointer;
-      border: 1px solid var(--border); background: var(--paper); color: var(--text);
-      transition: all 0.15s ease;
-    }
-    .btn:hover { background: #f8fafc; border-color: #cbd5e1; }
-    .btn-primary {
-      background: var(--accent); color: white; border-color: var(--accent);
-    }
-    .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .brief { background:var(--soft); border-left:5px solid var(--accent); border-radius:0 12px 12px 0; padding:16px 22px; margin:6px 0 26px; }
+    .label { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); }
+    .brief p { margin:4px 0 0; font-size:19px; line-height:1.5; font-weight:500; }
 
-    .expiry-tag {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 600;
-      padding: 5px 12px; border-radius: 20px; border: 1px solid #fde68a;
-    }
+    h2 { font-size:15px; letter-spacing:.02em; margin:32px 0 10px; padding-bottom:7px; border-bottom:1px solid var(--line); color:#1e293b; }
+    .two { display:grid; grid-template-columns:1fr 1fr; gap:22px; margin-top:6px; }
+    .two h2 { margin-top:0; }
+    @media (max-width:760px){ .two { grid-template-columns:1fr; } .page { padding:26px 20px; border-radius:0; } h1.title{font-size:25px;} }
 
-    /* Document Sheet Wrapper */
-    .doc-wrapper {
-      max-width: 880px;
-      margin: 32px auto 80px;
-      padding: 0 16px;
-    }
-    .doc-page {
-      background: var(--paper);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
-      padding: 56px 64px;
-    }
+    ul.clean { list-style:none; padding:0; margin:0; }
+    ul.clean li { position:relative; padding:5px 0 5px 26px; }
+    ul.clean li::before { content:"\2713"; position:absolute; left:0; color:var(--ok); font-weight:700; }
+    ul.dots li::before { content:"\2022"; color:var(--accent); font-size:20px; line-height:1.2; }
+    ul.q li::before { content:"?"; color:var(--warn); font-weight:700; }
 
-    /* Document Typography */
-    h1.doc-title {
-      font-size: 32px; font-weight: 700; margin: 0 0 10px;
-      line-height: 1.25; letter-spacing: -0.02em; color: #0f172a;
-    }
-    .doc-subtitle {
-      font-size: 14px; color: var(--muted); margin-bottom: 28px;
-      display: flex; flex-wrap: wrap; gap: 16px; align-items: center;
-    }
+    .task { display:flex; gap:10px; align-items:flex-start; padding:9px 0; border-bottom:1px solid var(--line); }
+    .task:last-child { border-bottom:none; }
+    .task input { margin-top:6px; width:17px; height:17px; cursor:pointer; accent-color:var(--accent); }
+    .task .what { flex:1; }
+    .chip { display:inline-block; font-size:12px; font-weight:600; padding:1px 9px; border-radius:20px; background:#e2e8f0; color:#334155; margin-right:6px; }
+    .chip.due { background:#fef3c7; color:#92400e; }
 
-    .meta-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 12px; padding: 18px; border-radius: 10px;
-      background: var(--card-bg); border: 1px solid var(--border);
-      margin-bottom: 36px;
-    }
-    .meta-item { display: flex; flex-direction: column; }
-    .meta-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
-    .meta-value { font-size: 14px; font-weight: 600; color: var(--text); margin-top: 2px; }
+    .tl { display:flex; gap:14px; padding:8px 0; border-bottom:1px dashed var(--line); }
+    .tl:last-child { border-bottom:none; }
+    .time { font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--muted); background:#f1f5f9; border-radius:6px; padding:2px 8px; height:fit-content; white-space:nowrap; }
+    .tl b { display:block; }
+    .tl small { color:#475569; font-size:14px; }
+    .hl { display:flex; gap:10px; padding:9px 14px; border-radius:8px; margin-bottom:8px; background:#fffbeb; border:1px solid #fde68a; font-size:15px; }
+    .hl.me { background:#f5f3ff; border-color:#ddd6fe; }
+    .hl b { white-space:nowrap; }
 
-    h2.section-title {
-      font-size: 20px; font-weight: 700; margin: 36px 0 16px;
-      padding-bottom: 8px; border-bottom: 1px solid var(--border);
-      color: #1e293b; display: flex; align-items: center; gap: 8px;
-    }
+    .bar { display:flex; height:14px; border-radius:7px; overflow:hidden; background:#e2e8f0; margin:12px 0; }
+    .legend { display:flex; flex-wrap:wrap; gap:6px 18px; font-size:14px; }
+    .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }
 
-    .summary-box {
-      background: #eff6ff; border-left: 4px solid var(--accent);
-      padding: 16px 20px; border-radius: 0 10px 10px 0;
-      font-size: 15px; color: #1e3a8a; line-height: 1.65;
-    }
+    .email { border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+    .email .subj { padding:10px 16px; background:#f8fafc; font-weight:600; border-bottom:1px solid var(--line); font-size:15px; }
+    .email pre { margin:0; padding:14px 16px; white-space:pre-wrap; font-family:inherit; font-size:15px; color:#334155; }
+    .email .row { padding:10px 16px; border-top:1px solid var(--line); display:flex; gap:8px; flex-wrap:wrap; background:#fafafa; }
 
-    /* Lists & Tables */
-    .styled-list {
-      padding-left: 20px; margin: 12px 0;
-    }
-    .styled-list li {
-      margin-bottom: 10px; font-size: 15px; color: #334155;
-    }
-    .topic-card {
-      margin-bottom: 14px; padding: 14px 18px; border-radius: 8px;
-      background: #f8fafc; border: 1px solid #e2e8f0;
-    }
-    .topic-title { font-weight: 600; color: #0f172a; margin-bottom: 4px; font-size: 15px; }
-    .topic-detail { font-size: 14px; color: #475569; }
+    .ask { border:1px solid #bfdbfe; background:var(--soft); border-radius:12px; padding:18px 20px; margin-top:30px; }
+    .ask .row { display:flex; gap:8px; margin-top:10px; }
+    .ask input { flex:1; padding:9px 14px; border:1px solid #bfdbfe; border-radius:8px; font:inherit; font-size:15px; }
+    .ask .q { margin-top:14px; font-weight:600; }
+    .ask .a { margin-top:4px; white-space:pre-wrap; color:#1e293b; }
 
-    /* Action Items Table */
-    .table-responsive { overflow-x: auto; margin-top: 12px; }
-    table.data-table {
-      width: 100%; border-collapse: collapse; font-size: 14px; text-align: left;
-    }
-    table.data-table th {
-      background: #f1f5f9; padding: 10px 14px; font-weight: 600;
-      color: #475569; border-bottom: 2px solid #cbd5e1;
-    }
-    table.data-table td {
-      padding: 12px 14px; border-bottom: 1px solid var(--border); color: #334155;
-    }
-    .owner-badge {
-      display: inline-block; padding: 2px 8px; border-radius: 4px;
-      background: #e2e8f0; color: #334155; font-size: 12px; font-weight: 600;
-    }
+    details.tr { margin-top:30px; border:1px solid var(--line); border-radius:12px; padding:0 18px; }
+    details.tr summary { cursor:pointer; padding:14px 0; font-weight:600; font-size:15px; }
+    .search { width:100%; padding:9px 14px; border:1px solid var(--line); border-radius:8px; font:inherit; font-size:15px; margin:2px 0 8px; }
+    .turn { padding:9px 0; border-bottom:1px dashed var(--line); font-size:15px; }
+    .turn.me { background:#f5f3ff; margin:0 -10px; padding:9px 10px; border-radius:6px; }
+    .who { font-weight:700; color:var(--accent); margin:0 6px 0 8px; }
+    .tag { font-size:11px; font-weight:700; color:var(--violet); background:#ede9fe; padding:1px 7px; border-radius:10px; margin-right:6px; }
+    .en { margin:2px 0 0 62px; color:#64748b; font-style:italic; font-size:14px; }
+    .en b { font-style:normal; }
 
-    /* Speaker Shares */
-    .speaker-bar {
-      display: flex; height: 14px; border-radius: 7px; overflow: hidden;
-      margin: 16px 0; background: #e2e8f0;
-    }
-    .speaker-segment { height: 100%; }
-    .speaker-legend {
-      display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px;
-    }
-    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
-    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
-
-    /* Transcript */
-    .transcript-stream { margin-top: 16px; }
-    .transcript-row {
-      display: flex; gap: 14px; padding: 10px 0;
-      border-bottom: 1px dashed #f1f5f9; font-size: 14px;
-    }
-    .transcript-time {
-      font-family: 'JetBrains Mono', monospace; font-size: 12px;
-      color: var(--muted); min-width: 50px; padding-top: 2px;
-    }
-    .transcript-body { flex: 1; }
-    .transcript-spk { font-weight: 600; color: #1e293b; margin-right: 6px; }
-    .transcript-tr {
-      margin-top: 4px; font-style: italic; color: #64748b; font-size: 13px;
-    }
-
-    /* Share Toast Notification */
-    .toast {
-      position: fixed; bottom: 24px; right: 24px;
-      background: #0f172a; color: white; padding: 12px 20px;
-      border-radius: 8px; font-size: 13px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-      display: none; align-items: center; gap: 8px; z-index: 1000;
-      animation: fadeIn 0.2s ease-out;
-    }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-    /* Print & Export PDF Stylesheet */
-    @media print {
-      .topbar, .toast { display: none !important; }
-      body { background: white; color: black; }
-      .doc-wrapper { margin: 0; padding: 0; max-width: 100%; }
-      .doc-page { border: none; box-shadow: none; padding: 20px; }
-      h2.section-title { page-break-after: avoid; }
-    }
-
-    @media (max-width: 768px) {
-      .doc-page { padding: 28px 20px; border-radius: 0; }
-      .topbar { padding: 10px 14px; }
-      h1.doc-title { font-size: 24px; }
-    }
-  
-    .tl-row { display: flex; gap: 14px; padding: 10px 0; border-bottom: 1px dashed var(--border); }
-    .tl-time { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: var(--pill-bg); color: var(--pill-text);
-               border-radius: 6px; padding: 2px 8px; height: fit-content; white-space: nowrap; }
-    .tl-title { font-weight: 600; font-size: 15px; }
-    .tl-sum { font-size: 14px; color: #475569; }
-    .hl { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 8px; margin-bottom: 8px;
-          background: #fffbeb; border: 1px solid #fde68a; font-size: 14px; }
-    .hl.mention { background: #f5f3ff; border-color: #ddd6fe; }
-    .hl b { white-space: nowrap; }
-    .email-card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-top: 12px; }
-    .email-subject { padding: 10px 16px; background: var(--card-bg); font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--border); }
-    .email-body { white-space: pre-wrap; padding: 14px 16px; font-size: 14px; color: #334155; margin: 0; font-family: inherit; }
-    .email-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid var(--border); background: #fafafa; }
-    .search-box { width: 100%; padding: 9px 14px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 14px; margin-top: 4px; }
-    .transcript-row.mention { background: #f5f3ff; margin: 0 -10px; padding: 10px; border-radius: 6px; }
-    .badge-me { font-size: 11px; font-weight: 700; color: #6d28d9; background: #ede9fe; padding: 1px 7px; border-radius: 10px; margin-left: 6px; }
-    .ask-card { border: 1px solid #bfdbfe; background: #eff6ff; border-radius: 12px; padding: 18px 20px; margin-top: 28px; }
-    .ask-row { display: flex; gap: 8px; margin-top: 10px; }
-    .ask-row input { flex: 1; padding: 9px 14px; border: 1px solid #bfdbfe; border-radius: 8px; font: inherit; font-size: 14px; }
-    .ask-answer { margin-top: 12px; white-space: pre-wrap; font-size: 14px; color: #1e293b; line-height: 1.6; }
-    .ask-q { margin-top: 12px; font-weight: 600; font-size: 14px; }
-    .expired-card {
-      max-width: 440px; margin: 18vh auto 0; text-align: center; background: var(--paper);
-      border: 1px solid var(--border); border-radius: 16px; padding: 40px 32px;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.08);
-    }
-    .expired-card h1 { font-size: 22px; margin: 0 0 10px; }
-    .expired-card p { font-size: 14px; color: var(--muted); line-height: 1.6; margin: 0; }
-    .loading { text-align: center; color: var(--muted); padding: 80px 0; }
+    .toast { position:fixed; right:22px; bottom:22px; background:#0f172a; color:#fff; padding:11px 18px; border-radius:8px; font-size:14px; display:none; z-index:100; }
+    .loading { text-align:center; color:var(--muted); padding:90px 0; }
+    .gone { max-width:440px; margin:18vh auto 0; text-align:center; background:#fff; border:1px solid var(--line); border-radius:16px; padding:40px 30px; }
+    .gone h1 { font-size:22px; margin:0 0 10px; } .gone p { color:var(--muted); margin:0; font-size:15px; }
+    @media print { .topbar, .toast, .ask, .search { display:none !important; } body { background:#fff; } .page { border:none; box-shadow:none; padding:0; } }
   </style>
 </head>
 <body>
-
   <header class="topbar">
-    <div class="brand"><span>Ink</span><span class="brand-badge">Online Doc</span></div>
-    <div class="topbar-actions">
-      <div class="expiry-tag" id="timerTag" title="Self-destructs after 72 hours">
-        <span>&#9203;</span><span id="countdownText">Loading...</span>
-      </div>
-      <button class="btn" onclick="shareReport()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-        <span>Share Link</span>
-      </button>
-      <button class="btn" onclick="exportDocx()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        <span>Export DOCX</span>
-      </button>
-      <button class="btn" onclick="exportMarkdown()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 15V9l3 3 3-3v6M17 9v6m-2-2 2 2 2-2"/></svg>
-        <span>Markdown</span>
-      </button>
-      <button class="btn btn-primary" onclick="exportPdf()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span>Export PDF</span>
-      </button>
+    <div class="brand"><span>Ink</span><span class="brand-badge">Meeting brief</span></div>
+    <div class="actions">
+      <span class="expiry" id="timerTag" title="This link deletes itself after 72 hours"><span id="countdownText">Loading...</span></span>
+      <button class="btn" onclick="shareReport()">Share link</button>
+      <button class="btn" onclick="exportDocx()">Export DOCX</button>
+      <button class="btn" onclick="exportMarkdown()">Markdown</button>
+      <button class="btn btn-primary" onclick="exportPdf()">Export PDF</button>
     </div>
   </header>
+  <main class="wrap"><article class="page" id="reportContent"><div class="loading">Loading report...</div></article></main>
+  <div class="toast" id="toast"></div>
 
-  <main class="doc-wrapper">
-    <article class="doc-page" id="reportContent"><div class="loading">Loading report...</div></article>
-  </main>
+<script>
+let reportData = null;
 
-  <div class="toast" id="toast"><span>&#9989;</span><span id="toastMsg">Done</span></div>
+// ---------- tiny safe DOM helpers: all report text goes through textContent, never innerHTML ----------
+function h(tag, cls, text, style) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; if (style) e.style.cssText = style; return e; }
+function add(parent, ...kids) { kids.forEach(k => k && parent.appendChild(k)); return parent; }
+function showToast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.style.display = "block"; setTimeout(() => { t.style.display = "none"; }, 3200); }
 
-  <script>
-    let reportData = null;
+// ---------- shared text logic (mirrors report.py) ----------
+function stamp(t) { t = Math.floor(Number(t) || 0); return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); }
+function norm(s) { return (s || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim(); }
+function similar(a, b) { const wa = new Set(norm(a).split(" ").filter(Boolean)), wb = new Set(norm(b).split(" ").filter(Boolean)); if (!wa.size || !wb.size) return wa.size === wb.size;
+  let c = 0; wa.forEach(w => { if (wb.has(w)) c++; }); return c / Math.max(wa.size, wb.size) >= 0.8; }
+function firstSentence(t) { t = (t || "").trim(); const m = t.match(/^[\s\S]+?[.!?](\s|$)/); const out = m ? m[0].trim() : t; return out.length > 220 ? out.slice(0, 217) + "..." : out; }
+function mergeTranscript(lines, gap) {
+  gap = gap || 8; const out = [];
+  [...(lines || [])].sort((a, b) => (a.t || 0) - (b.t || 0)).forEach(x => {
+    const text = (x.text || "").trim(), tr = (x.translation || "").trim(); if (!text && !tr) return;
+    const prev = out[out.length - 1];
+    if (prev && prev.speaker === x.speaker && (x.t || 0) - prev.last <= gap) {
+      prev.text = (prev.text + " " + text).trim(); prev.translation = (prev.translation + " " + tr).trim(); prev.last = x.t || 0; prev.mention = prev.mention || !!x.mention;
+    } else out.push({ t: x.t || 0, last: x.t || 0, speaker: x.speaker || "Speaker", text, translation: tr, mention: !!x.mention });
+  });
+  out.forEach(m => { if (!m.text) { m.text = m.translation; m.translation = ""; } else if (similar(m.text, m.translation)) m.translation = ""; });
+  return out;
+}
+function talkTotals() { const o = {}; for (const [s, per] of Object.entries(reportData.talk || {})) { const v = Object.values(per).reduce((a, b) => a + (Number(b) || 0), 0); if (v > 0) o[s] = v; } return o; }
+function realSpeakers(tot) { const names = Object.keys(tot); const named = names.filter(n => n.toLowerCase() !== "others"); return names.length >= 2 && named.length >= 1 ? tot : {}; }
+function bookmarkText(b) {
+  if (b.text) return b.text;
+  const tr = reportData.transcript || []; if (!tr.length) return "";
+  const near = tr.reduce((p, c) => Math.abs((c.t || 0) - b.t) < Math.abs((p.t || 0) - b.t) ? c : p);
+  return Math.abs((near.t || 0) - b.t) <= 30 ? (near.translation || near.text || "").slice(0, 160) : "";
+}
+function prettyWhen() { return reportData.started_at ? new Date(reportData.started_at).toLocaleString("en-US", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""; }
+function people() {
+  const host = (reportData.host_name || "").toLowerCase();
+  const all = [...(reportData.participants || []), ...Object.keys(reportData.talk || {})];
+  return [...new Set(all)].filter(n => !["others", "you"].includes(n.toLowerCase()) && (!host || !n.toLowerCase().includes(host)));
+}
 
-    // ---- tiny DOM helper: everything user-provided goes through textContent, never innerHTML ----
-    function h(tag, cls, text, style) {
-      const e = document.createElement(tag);
-      if (cls) e.className = cls;
-      if (text != null) e.textContent = text;
-      if (style) e.style.cssText = style;
-      return e;
+// ---------- load ----------
+(async function load() {
+  const id = location.pathname.split("/").filter(Boolean).pop() || "";
+  try {
+    const r = await fetch("/api/report/" + encodeURIComponent(id), { cache: "no-store" });
+    if (r.status === 404) return showGone();
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    reportData = await r.json(); render();
+  } catch (e) { const root = document.getElementById("reportContent"); root.textContent = ""; add(root, h("div", "loading", "Could not load this report: " + e.message)); }
+})();
+
+function showGone() {
+  document.title = "Report expired - Ink"; document.querySelector(".actions").style.display = "none";
+  const main = document.querySelector("main"); main.textContent = "";
+  add(main, add(h("div", "gone"), h("h1", null, "Meeting report expired"), h("p", null, "This link reached its 72-hour lifespan and was permanently deleted, or the link is not valid.")));
+}
+function startCountdown() {
+  const end = new Date(reportData.expires_at || (Date.now() + 72 * 3600 * 1000));
+  const tick = () => { const d = end - new Date(), tag = document.getElementById("timerTag");
+    if (d <= 0) { document.getElementById("countdownText").textContent = "Link expired"; tag.style.background = "#fee2e2"; tag.style.color = "#991b1b"; return; }
+    document.getElementById("countdownText").textContent = "Deletes in " + Math.floor(d / 3600000) + "h " + Math.floor((d % 3600000) / 60000) + "m"; };
+  tick(); setInterval(tick, 60000);
+}
+
+// ---------- the report ----------
+const COLORS = ["#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#0891b2"];
+function section(root, title) { return root.appendChild(h("h2", null, title)); }
+function list(items, cls) { const ul = h("ul", "clean " + (cls || "")); items.forEach(x => ul.appendChild(h("li", null, String(x)))); return ul; }
+
+function render() {
+  const d = reportData, a = d.analysis || {};
+  const heading = d.title && d.title !== "Meeting Report" ? d.title : (a.title || "Meeting report");
+  document.title = heading + " - Ink";
+  const root = document.getElementById("reportContent"); root.textContent = "";
+
+  add(root, h("h1", "title", heading));
+  const when = prettyWhen();
+  const mins = Number(d.duration_minutes) || 0;
+  const facts = h("div", "facts");
+  [when, mins >= 1 ? Math.round(mins) + " min" : Math.round(mins * 60) + " sec", d.platform, people().length ? "with " + people().slice(0, 6).join(", ") : "", a.sentiment ? "tone: " + String(a.sentiment).toLowerCase() : ""]
+    .filter(Boolean).forEach(f => facts.appendChild(h("span", null, f)));
+  add(root, facts);
+
+  const tldr = (a.tldr || firstSentence(a.summary)).trim();
+  if (tldr) add(root, add(h("div", "brief"), h("div", "label", "In short"), h("p", null, tldr)));
+
+  const decisions = a.decisions || [], actions = a.action_items || [];
+  if (decisions.length || actions.length) {
+    const grid = h("div", decisions.length && actions.length ? "two" : "");
+    if (decisions.length) add(grid, add(h("div"), h("h2", null, "Decisions"), list(decisions)));
+    if (actions.length) {
+      const box = add(h("div"), h("h2", null, "Action items"));
+      actions.forEach(i => {
+        const cb = h("input"); cb.type = "checkbox";
+        const what = add(h("div", "what"), h("span", null, i.task || ""));
+        const meta = h("div", null, null, "margin-top:3px");
+        meta.appendChild(h("span", "chip", i.owner || "Unassigned"));
+        if (i.due) meta.appendChild(h("span", "chip due", i.due));
+        what.appendChild(meta);
+        box.appendChild(add(h("div", "task"), cb, what));
+      });
+      grid.appendChild(box);
     }
-    function add(parent, ...kids) { kids.forEach(k => k && parent.appendChild(k)); return parent; }
-    function section(root, title) { return root.appendChild(h("h2", "section-title", title)); }
+    root.appendChild(grid);
+  }
 
-    function showToast(msg) {
-      const t = document.getElementById("toast");
-      document.getElementById("toastMsg").textContent = msg;
-      t.style.display = "flex";
-      setTimeout(() => { t.style.display = "none"; }, 3200);
+  if (a.summary && tldr && norm(a.summary) !== norm(tldr)) { section(root, "Context"); add(root, h("p", null, a.summary, "margin:0")); }
+  const take = a.takeaways || a.key_points || [];
+  if (take.length) { section(root, "Worth remembering"); add(root, list(take, "dots")); }
+  if ((a.open_questions || []).length) { section(root, "Still open"); add(root, list(a.open_questions, "q")); }
+
+  if ((a.chapters || []).length) {
+    section(root, "Timeline");
+    a.chapters.forEach(c => add(root, add(h("div", "tl"), h("span", "time", c.start || ""), add(h("div"), h("b", null, c.title || ""), h("small", null, c.summary || "")))));
+  }
+
+  const marks = d.bookmarks || [], mentioned = (d.transcript || []).filter(l => l.mention);
+  if (marks.length || mentioned.length) {
+    section(root, "Highlights");
+    marks.forEach(b => add(root, add(h("div", "hl"), h("b", null, "★ " + stamp(b.t)), h("span", null, bookmarkText(b) || "You bookmarked this moment."))));
+    mentioned.forEach(l => add(root, add(h("div", "hl me"), h("b", null, "@ " + stamp(l.t)), h("span", null, (l.speaker || "Someone") + " mentioned you: " + (l.translation || l.text || "")))));
+  }
+
+  const tot = realSpeakers(talkTotals()), whole = Object.values(tot).reduce((x, y) => x + y, 0) || 1;
+  if (Object.keys(tot).length) {
+    section(root, "Who spoke");
+    const bar = h("div", "bar"), legend = h("div", "legend");
+    Object.entries(tot).sort((x, y) => y[1] - x[1]).forEach(([s, v], i) => {
+      const color = COLORS[i % COLORS.length];
+      const seg = h("div", null, null, "width:" + (v / whole * 100).toFixed(1) + "%;background:" + color); seg.title = s; bar.appendChild(seg);
+      const li = h("span"); add(li, h("span", "dot", null, "background:" + color), document.createTextNode(s + " "), h("b", null, Math.round(v / whole * 100) + "%"), document.createTextNode(" (" + (v / 60).toFixed(1) + " min)"));
+      legend.appendChild(li);
+    });
+    add(root, bar, legend);
+  }
+
+  const email = a.follow_up_email || {};
+  if (email.body) {
+    section(root, "Follow-up email (draft)");
+    const row = h("div", "row");
+    const mk = (label, fn) => { const b = h("button", "btn", label); b.onclick = fn; return b; };
+    row.appendChild(mk("Copy", async () => { try { await navigator.clipboard.writeText("Subject: " + (email.subject || "") + "\n\n" + email.body); showToast("Email copied"); } catch (e) { showToast("Select the text and copy it"); } }));
+    row.appendChild(mk("Open in email app", () => { location.href = "mailto:?subject=" + encodeURIComponent(email.subject || "") + "&body=" + encodeURIComponent(email.body); }));
+    row.appendChild(mk("Send via WhatsApp", () => { window.open("https://wa.me/?text=" + encodeURIComponent((email.subject ? email.subject + "\n\n" : "") + email.body), "_blank", "noopener"); }));
+    add(root, add(h("div", "email"), h("div", "subj", email.subject || "(no subject)"), h("pre", null, email.body), row));
+  }
+
+  const slot = h("div"); slot.id = "askSlot"; root.appendChild(slot);
+
+  const turns = mergeTranscript(d.transcript);
+  if (turns.length) {
+    const det = h("details", "tr"); det.id = "transcript";
+    det.appendChild(h("summary", null, "Full transcript (" + turns.length + " turns) – click to open"));
+    const search = h("input", "search"); search.type = "search"; search.placeholder = "Search the transcript..."; det.appendChild(search);
+    const langs = (d.languages || []).filter(Boolean);
+    if (langs.length > 1) det.appendChild(h("p", null, "Languages heard: " + langs.join(", ") + ". English appears under lines spoken in another language.", "font-size:13px;color:#64748b;margin:4px 0 6px"));
+    const rows = [];
+    turns.forEach(m => {
+      const wrap = h("div", "turn" + (m.mention ? " me" : ""));
+      const line = add(h("div"), h("span", "time", stamp(m.t)), h("span", "who", m.speaker));
+      if (m.mention) line.appendChild(h("span", "tag", "@you"));
+      line.appendChild(document.createTextNode(m.text));
+      wrap.appendChild(line);
+      if (m.translation) wrap.appendChild(add(h("div", "en"), h("b", null, "In English: "), document.createTextNode(m.translation)));
+      rows.push([wrap, (m.speaker + " " + m.text + " " + m.translation).toLowerCase()]); det.appendChild(wrap);
+    });
+    search.addEventListener("input", () => { const q = search.value.trim().toLowerCase(); if (q) det.open = true; rows.forEach(([r, t]) => { r.style.display = !q || t.includes(q) ? "" : "none"; }); });
+    root.appendChild(det);
+  }
+  startCountdown(); initAsk();
+}
+
+// ---------- ask this meeting (only where the server can answer: Ink's local server) ----------
+async function initAsk() {
+  let ok = false;
+  try { ok = (await (await fetch("/api/capabilities", { cache: "no-store" })).json()).ask === true; } catch (e) { /* cloud: not offered */ }
+  const slot = document.getElementById("askSlot"); if (!ok || !slot) return;
+  const input = h("input"); input.type = "text"; input.maxLength = 500; input.placeholder = "e.g. What did we decide about pricing? Who owns the release notes?";
+  const btn = h("button", "btn btn-primary", "Ask"), out = h("div");
+  const send = async () => {
+    const q = input.value.trim(); if (!q) return;
+    btn.disabled = true; btn.textContent = "Thinking...";
+    const qEl = h("div", "q", q), aEl = h("div", "a", "..."); out.prepend(aEl); out.prepend(qEl);
+    try {
+      const id = location.pathname.split("/").filter(Boolean).pop();
+      const r = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, question: q }) });
+      const j = await r.json(); aEl.textContent = j.answer || j.error || "No answer";
+    } catch (e) { aEl.textContent = "Could not get an answer: " + e.message; }
+    btn.disabled = false; btn.textContent = "Ask"; input.value = "";
+  };
+  btn.onclick = send; input.addEventListener("keydown", e => { if (e.key === "Enter") send(); });
+  add(slot, add(h("div", "ask"), h("div", "label", "Ask about this meeting"), h("div", null, "Answers come only from this meeting's transcript.", "font-size:14px;color:#475569"), add(h("div", "row"), input, btn), out));
+}
+
+async function shareReport() {
+  const url = location.href, t = (reportData && reportData.title) || "Meeting report";
+  if (navigator.share) { try { await navigator.share({ title: t, text: t + " - meeting brief", url }); return; } catch (e) { /* cancelled */ } }
+  try { await navigator.clipboard.writeText(url); showToast("Link copied. Paste it into WhatsApp, Gmail or anywhere."); } catch (e) { showToast("Copy this address: " + url); }
+}
+
+// ---------- exports ----------
+function safeName() { return (reportData.title && reportData.title !== "Meeting Report" ? reportData.title : (reportData.analysis || {}).title || "Meeting_Report").replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "Meeting_Report"; }
+function download(blob, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+function heading() { return reportData.title && reportData.title !== "Meeting Report" ? reportData.title : ((reportData.analysis || {}).title || "Meeting report"); }
+function briefText() { const a = reportData.analysis || {}; return (a.tldr || firstSentence(a.summary)).trim(); }
+
+async function exportPdf() {
+  const el = document.getElementById("reportContent");
+  if (!window.html2pdf) { window.print(); return; }
+  const det = document.getElementById("transcript"), wasOpen = det ? det.open : false;
+  if (det) det.open = true;                       // the transcript must be in the PDF even if it is collapsed on screen
+  try {
+    showToast("Preparing PDF...");
+    await html2pdf().set({ margin: [10, 10, 10, 10], filename: safeName() + ".pdf", image: { type: "jpeg", quality: 0.96 }, html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }, pagebreak: { mode: ["css", "legacy"], avoid: [".task", ".tl", ".turn", ".hl", ".brief"] } }).from(el).save();
+    showToast("PDF downloaded");
+  } catch (err) { console.error("PDF export error:", err); window.print(); }
+  finally { if (det) det.open = wasOpen; }
+}
+
+function exportMarkdown() {
+  const d = reportData, a = d.analysis || {}, L = [];
+  L.push("# " + heading(), "");
+  const facts = [prettyWhen(), (Number(d.duration_minutes) || 0).toFixed(0) + " min", d.platform, people().length ? "with " + people().join(", ") : ""].filter(Boolean);
+  L.push("_" + facts.join(" · ") + "_", "");
+  if (briefText()) L.push("> **In short:** " + briefText(), "");
+  if ((a.decisions || []).length) { L.push("## Decisions", ""); a.decisions.forEach(x => L.push("- ✓ " + x)); L.push(""); }
+  if ((a.action_items || []).length) { L.push("## Action items", ""); a.action_items.forEach(i => L.push("- [ ] " + i.task + (i.owner ? " (" + i.owner + ")" : "") + (i.due ? " – " + i.due : ""))); L.push(""); }
+  if (a.summary && norm(a.summary) !== norm(briefText())) L.push("## Context", "", a.summary, "");
+  const take = a.takeaways || a.key_points || [];
+  if (take.length) { L.push("## Worth remembering", ""); take.forEach(x => L.push("- " + x)); L.push(""); }
+  if ((a.open_questions || []).length) { L.push("## Still open", ""); a.open_questions.forEach(x => L.push("- " + x)); L.push(""); }
+  if ((a.chapters || []).length) { L.push("## Timeline", ""); a.chapters.forEach(c => L.push("- **" + (c.start || "") + "** " + (c.title || "") + (c.summary ? " – " + c.summary : ""))); L.push(""); }
+  const marks = d.bookmarks || [], men = (d.transcript || []).filter(l => l.mention);
+  if (marks.length || men.length) { L.push("## Highlights", ""); marks.forEach(b => L.push("- ★ [" + stamp(b.t) + "] " + (bookmarkText(b) || "Bookmarked"))); men.forEach(l => L.push("- @ [" + stamp(l.t) + "] " + (l.speaker || "") + " mentioned you: " + (l.translation || l.text || ""))); L.push(""); }
+  const tot = realSpeakers(talkTotals()), whole = Object.values(tot).reduce((x, y) => x + y, 0) || 1;
+  if (Object.keys(tot).length) { L.push("## Who spoke", ""); Object.entries(tot).sort((x, y) => y[1] - x[1]).forEach(([s, v]) => L.push("- " + s + ": " + (v / 60).toFixed(1) + " min (" + Math.round(v / whole * 100) + "%)")); L.push(""); }
+  const em = a.follow_up_email || {};
+  if (em.body) L.push("## Follow-up email (draft)", "", "**Subject:** " + (em.subject || ""), "", em.body, "");
+  const turns = mergeTranscript(d.transcript);
+  if (turns.length) { L.push("## Transcript", ""); turns.forEach(m => { L.push("**[" + stamp(m.t) + "] " + m.speaker + ":** " + m.text); if (m.translation) L.push("> In English: " + m.translation); L.push(""); }); }
+  download(new Blob([L.join("\n")], { type: "text/markdown;charset=utf-8" }), safeName() + ".md"); showToast("Markdown downloaded");
+}
+
+async function exportDocx() {
+  try {
+    const { Document, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, Packer, ShadingType } = docx;
+    const d = reportData, a = d.analysis || {};
+    const P = (text, o) => new Paragraph(Object.assign({ text: String(text == null ? "" : text), spacing: { after: 100 } }, o || {}));
+    const H = t => new Paragraph({ text: t, heading: HeadingLevel.HEADING_2, spacing: { before: 280, after: 100 } });
+    const B = t => new Paragraph({ text: String(t), bullet: { level: 0 }, spacing: { after: 60 } });
+    const cell = (t, bold, fill) => new TableCell({ shading: fill ? { type: ShadingType.CLEAR, fill } : undefined, children: [new Paragraph({ children: [new TextRun({ text: String(t || ""), bold: !!bold })] })] });
+    const kids = [new Paragraph({ text: heading(), heading: HeadingLevel.HEADING_1 })];
+    const facts = [prettyWhen(), (Number(d.duration_minutes) || 0).toFixed(0) + " min", d.platform, people().length ? "with " + people().join(", ") : ""].filter(Boolean);
+    kids.push(new Paragraph({ children: [new TextRun({ text: facts.join("  ·  "), color: "64748B", size: 20 })], spacing: { after: 200 } }));
+    if (briefText()) kids.push(new Paragraph({ shading: { type: ShadingType.CLEAR, fill: "EFF6FF" }, spacing: { before: 60, after: 200 }, children: [new TextRun({ text: "IN SHORT  ", bold: true, color: "2563EB", size: 18 }), new TextRun({ text: briefText(), size: 26 })] }));
+    if ((a.decisions || []).length) { kids.push(H("Decisions")); a.decisions.forEach(x => kids.push(B("✓ " + x))); }
+    if ((a.action_items || []).length) {
+      kids.push(H("Action items"));
+      const due = a.action_items.some(i => i.due);
+      kids.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [
+        new TableRow({ children: [cell("Task", true, "F1F5F9"), cell("Who", true, "F1F5F9")].concat(due ? [cell("When", true, "F1F5F9")] : []) }),
+        ...a.action_items.map(i => new TableRow({ children: [cell(i.task), cell(i.owner || "-")].concat(due ? [cell(i.due || "-")] : []) })) ] }));
     }
-
-    // ---- load ----
-    (async function load() {
-      const id = location.pathname.split("/").filter(Boolean).pop() || "";
-      try {
-        const r = await fetch("/api/report/" + encodeURIComponent(id), { cache: "no-store" });
-        if (r.status === 404) return showExpired();
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        reportData = await r.json();
-        render();
-      } catch (e) {
-        const root = document.getElementById("reportContent");
-        root.textContent = "";
-        add(root, h("div", "loading", "Could not load this report: " + e.message));
-      }
-    })();
-
-    function showExpired() {
-      document.title = "Report expired - Ink";
-      document.querySelector(".topbar-actions").style.display = "none";
-      const main = document.querySelector("main");
-      main.textContent = "";
-      add(main, add(h("div", "expired-card"),
-        h("h1", null, "Meeting report expired"),
-        h("p", null, "This report link reached its 72-hour lifespan and was permanently deleted, or the link is not valid.")));
+    if (a.summary && norm(a.summary) !== norm(briefText())) kids.push(H("Context"), P(a.summary));
+    const take = a.takeaways || a.key_points || [];
+    if (take.length) { kids.push(H("Worth remembering")); take.forEach(x => kids.push(B(x))); }
+    if ((a.open_questions || []).length) { kids.push(H("Still open")); a.open_questions.forEach(x => kids.push(B(x))); }
+    if ((a.chapters || []).length) { kids.push(H("Timeline")); a.chapters.forEach(c => kids.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: (c.start || "") + "  " + (c.title || ""), bold: true }), new TextRun(c.summary ? " – " + c.summary : "")] }))); }
+    const marks = d.bookmarks || [], men = (d.transcript || []).filter(l => l.mention);
+    if (marks.length || men.length) { kids.push(H("Highlights")); marks.forEach(b => kids.push(B("★ " + stamp(b.t) + "  " + (bookmarkText(b) || "Bookmarked")))); men.forEach(l => kids.push(B("@ " + stamp(l.t) + "  " + (l.speaker || "") + " mentioned you: " + (l.translation || l.text || "")))); }
+    const tot = realSpeakers(talkTotals()), whole = Object.values(tot).reduce((x, y) => x + y, 0) || 1;
+    if (Object.keys(tot).length) {
+      kids.push(H("Who spoke"));
+      kids.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [new TableRow({ children: [cell("Speaker", true, "F1F5F9"), cell("Minutes", true, "F1F5F9"), cell("Share", true, "F1F5F9")] }),
+        ...Object.entries(tot).sort((x, y) => y[1] - x[1]).map(([s, v]) => new TableRow({ children: [cell(s), cell((v / 60).toFixed(1)), cell(Math.round(v / whole * 100) + "%")] }))] }));
     }
-
-    // ---- 72h countdown ----
-    function startCountdown() {
-      const expiresAt = new Date(reportData.expires_at || (Date.now() + 72 * 3600 * 1000));
-      const tick = () => {
-        const diff = expiresAt - new Date();
-        const tag = document.getElementById("timerTag");
-        if (diff <= 0) {
-          document.getElementById("countdownText").textContent = "Link expired";
-          tag.style.background = "#fee2e2"; tag.style.color = "#991b1b";
-          return;
-        }
-        const hrs = Math.floor(diff / 3600000), mins = Math.floor((diff % 3600000) / 60000);
-        document.getElementById("countdownText").textContent = "Expires in " + hrs + "h " + mins + "m";
-      };
-      tick();
-      setInterval(tick, 60000);
+    const em = a.follow_up_email || {};
+    if (em.body) { kids.push(H("Follow-up email (draft)"), new Paragraph({ children: [new TextRun({ text: "Subject: " + (em.subject || ""), bold: true })] })); String(em.body).split("\n").forEach(l => kids.push(P(l))); }
+    const turns = mergeTranscript(d.transcript);
+    if (turns.length) {
+      kids.push(new Paragraph({ text: "Full transcript", heading: HeadingLevel.HEADING_2, pageBreakBefore: true }));
+      turns.forEach(m => {
+        kids.push(new Paragraph({ spacing: { before: 100, after: 20 }, children: [new TextRun({ text: stamp(m.t) + "  ", color: "64748B", size: 18 }), new TextRun({ text: m.speaker + "  ", bold: true, color: "2563EB" }), new TextRun(m.text)] }));
+        if (m.translation) kids.push(new Paragraph({ indent: { left: 500 }, children: [new TextRun({ text: "In English: ", bold: true, color: "64748B", size: 19 }), new TextRun({ text: m.translation, italics: true, color: "64748B", size: 20 })] }));
+      });
     }
-
-    // ---- render the document ----
-    const COLORS = ["#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#0891b2"];
-
-    function render() {
-      const d = reportData, a = d.analysis || {};
-      document.title = (d.title || "Meeting Report") + " - Ink";
-      const root = document.getElementById("reportContent");
-      root.textContent = "";
-
-      const started = d.started_at ? new Date(d.started_at).toLocaleString("en-US", {
-        weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Recent meeting";
-      add(root, h("h1", "doc-title", d.title || "Meeting Report"));
-      add(root, add(h("div", "doc-subtitle"),
-        h("span", null, started), h("span", null, "•"),
-        h("span", null, (Number(d.duration_minutes) || 0).toFixed(1) + " mins"), h("span", null, "•"),
-        h("span", null, d.platform || "Video call")));
-
-      const meta = h("div", "meta-grid");
-      const item = (label, value) => add(h("div", "meta-item"), h("span", "meta-label", label), h("span", "meta-value", value));
-      add(meta,
-        item("Organized by", d.host_name || "Host"),
-        item("Participants", (d.participants || []).join(", ") || d.host_name || "-"),
-        item("Overall tone", a.sentiment || "Neutral"),
-        item("Languages", (d.languages || []).join(", ") || "-"));
-      add(root, meta);
-
-      section(root, "Executive summary");
-      add(root, h("div", "summary-box", a.summary || "No summary available."));
-
-      if ((a.chapters || []).length) {
-        section(root, "Timeline");
-        a.chapters.forEach(c => add(root, add(h("div", "tl-row"), h("span", "tl-time", c.start || ""),
-          add(h("div"), h("div", "tl-title", c.title || ""), h("div", "tl-sum", c.summary || "")))));
-      }
-
-      const marks = d.bookmarks || [], mentioned = (d.transcript || []).filter(l => l.mention);
-      if (marks.length || mentioned.length) {
-        section(root, "Highlights");
-        marks.forEach(b => add(root, add(h("div", "hl"), h("b", null, "\u2B50 " + stamp(b.t)), h("span", null, b.text ? "Bookmarked: " + b.text : "Bookmarked moment"))));
-        mentioned.forEach(l => add(root, add(h("div", "hl mention"), h("b", null, "@ " + stamp(l.t)), h("span", null, (l.speaker || "Someone") + " mentioned you: " + (l.text || l.translation || "")))));
-      }
-
-      if ((a.topics || []).length) {
-        section(root, "What was discussed");
-        a.topics.forEach(t => add(root, add(h("div", "topic-card"), h("div", "topic-title", t.title), h("div", "topic-detail", t.detail))));
-      }
-
-      const hasPD = (a.key_points || []).length || (a.decisions || []).length;
-      if (hasPD) {
-        const grid = h("div", null, null, "display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;margin-top:12px");
-        const col = (title, items, strong) => {
-          if (!items || !items.length) return null;
-          const ul = h("ul", "styled-list");
-          items.forEach(x => { const li = h("li"); li.appendChild(strong ? h("strong", null, x) : document.createTextNode(x)); ul.appendChild(li); });
-          return add(h("div"), h("h2", "section-title", title, "font-size:17px"), ul);
-        };
-        add(grid, col("Key points", a.key_points, false), col("Decisions made", a.decisions, true));
-        add(root, grid);
-      }
-
-      if ((a.action_items || []).length) {
-        section(root, "Action items");
-        const table = h("table", "data-table");
-        const head = h("tr");
-        add(head, h("th", null, "", "width:40px"), h("th", null, "Task"), h("th", null, "Owner", "width:160px"));
-        add(table, add(h("thead"), head));
-        const body = h("tbody");
-        a.action_items.forEach(i => {
-          const cb = h("input"); cb.type = "checkbox"; cb.style.cursor = "pointer";
-          add(body, add(h("tr"), add(h("td"), cb), h("td", null, i.task), add(h("td"), h("span", "owner-badge", i.owner || "Unassigned"))));
-        });
-        add(table, body);
-        add(root, add(h("div", "table-responsive"), table));
-      }
-
-      if ((a.follow_ups || []).length) {
-        section(root, "Suggested follow-ups");
-        const ul = h("ul", "styled-list");
-        a.follow_ups.forEach(x => ul.appendChild(h("li", null, x)));
-        add(root, ul);
-      }
-
-      if ((a.open_questions || []).length) {
-        section(root, "Open questions");
-        const ul = h("ul", "styled-list");
-        a.open_questions.forEach(x => ul.appendChild(h("li", null, x)));
-        add(root, ul);
-      }
-
-      const email = a.follow_up_email || {};
-      if (email.body) {
-        section(root, "Draft follow-up email");
-        const card = h("div", "email-card");
-        const actions = h("div", "email-actions");
-        const mk = (label, fn) => { const b = h("button", "btn", label); b.onclick = fn; return b; };
-        actions.appendChild(mk("Copy email", async () => {
-          try { await navigator.clipboard.writeText("Subject: " + (email.subject || "") + "\n\n" + email.body); showToast("Email copied"); }
-          catch (e) { showToast("Select the text and copy it"); }
-        }));
-        actions.appendChild(mk("Open in email app", () => { location.href = "mailto:?subject=" + encodeURIComponent(email.subject || "") + "&body=" + encodeURIComponent(email.body); }));
-        actions.appendChild(mk("Send via WhatsApp", () => { window.open("https://wa.me/?text=" + encodeURIComponent((email.subject ? email.subject + "\n\n" : "") + email.body), "_blank", "noopener"); }));
-        add(card, h("div", "email-subject", email.subject || "(no subject)"), h("pre", "email-body", email.body), actions);
-        add(root, card);
-      }
-
-      const totals = talkTotals(), whole = Object.values(totals).reduce((x, y) => x + y, 0) || 1;
-      if (Object.keys(totals).length) {
-        section(root, "Speaking share");
-        const bar = h("div", "speaker-bar"), legend = h("div", "speaker-legend");
-        Object.entries(totals).forEach(([spk, secs], i) => {
-          const color = COLORS[i % COLORS.length];
-          const seg = h("div", "speaker-segment", null, "width:" + (secs / whole * 100).toFixed(1) + "%;background:" + color);
-          seg.title = spk + ": " + (secs / whole * 100).toFixed(1) + "%";
-          bar.appendChild(seg);
-          const li = h("div", "legend-item");
-          add(li, h("span", "legend-dot", null, "background:" + color));
-          const label = h("span", null, spk + ": ");
-          label.appendChild(h("strong", null, Math.round(secs / whole * 100) + "%"));
-          label.appendChild(document.createTextNode(" (" + (secs / 60).toFixed(1) + "m)"));
-          legend.appendChild(add(li, label));
-        });
-        add(root, add(h("div"), bar, legend));
-      }
-
-      const slot = h("div"); slot.id = "askSlot"; root.appendChild(slot);
-
-      if ((d.transcript || []).length) {
-        section(root, "Full transcript");
-        const search = h("input", "search-box"); search.type = "search"; search.placeholder = "Search the transcript...";
-        root.appendChild(search);
-        const stream = h("div", "transcript-stream");
-        const rows = [];
-        d.transcript.forEach(l => {
-          const body = add(h("div", "transcript-body"), h("span", "transcript-spk", (l.speaker || "Speaker") + ":"), h("span", null, l.text || ""));
-          if (l.mention) body.appendChild(h("span", "badge-me", "mentioned you"));
-          if (l.translation) body.appendChild(h("div", "transcript-tr", "\u21B3 " + l.translation));
-          const row = add(h("div", "transcript-row" + (l.mention ? " mention" : "")), h("span", "transcript-time", "[" + stamp(l.t) + "]"), body);
-          rows.push([row, ((l.speaker || "") + " " + (l.text || "") + " " + (l.translation || "")).toLowerCase()]);
-          stream.appendChild(row);
-        });
-        search.addEventListener("input", () => {
-          const q = search.value.trim().toLowerCase();
-          rows.forEach(([row, text]) => { row.style.display = !q || text.includes(q) ? "" : "none"; });
-        });
-        add(root, stream);
-      }
-      initAsk();
-      startCountdown();
-    }
-
-    // "Ask this meeting": only offered when the server can answer (Ink's local server, which has the user's own key)
-    async function initAsk() {
-      let ok = false;
-      try { ok = (await (await fetch("/api/capabilities", { cache: "no-store" })).json()).ask === true; } catch (e) { /* cloud: no */ }
-      const slot = document.getElementById("askSlot");
-      if (!ok || !slot) return;
-      const input = h("input"); input.type = "text"; input.maxLength = 500; input.placeholder = "e.g. What did we decide about pricing? Who owns the release notes?";
-      const btn = h("button", "btn btn-primary", "Ask");
-      const out = h("div");
-      const send = async () => {
-        const q = input.value.trim(); if (!q) return;
-        btn.disabled = true; btn.textContent = "Thinking...";
-        const qEl = h("div", "ask-q", q), aEl = h("div", "ask-answer", "...");
-        out.prepend(aEl); out.prepend(qEl);
-        try {
-          const id = location.pathname.split("/").filter(Boolean).pop();
-          const r = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, question: q }) });
-          const j = await r.json();
-          aEl.textContent = j.answer || j.error || "No answer";
-        } catch (e) { aEl.textContent = "Could not get an answer: " + e.message; }
-        btn.disabled = false; btn.textContent = "Ask"; input.value = "";
-      };
-      btn.onclick = send;
-      input.addEventListener("keydown", e => { if (e.key === "Enter") send(); });
-      const card = h("div", "ask-card");
-      add(card, h("div", "tl-title", "Ask about this meeting"), h("div", "tl-sum", "Answers come only from this meeting's transcript."), add(h("div", "ask-row"), input, btn), out);
-      slot.appendChild(card);
-    }
-
-    async function shareReport() {
-      const shareUrl = location.href, shareTitle = (reportData && reportData.title) || "Meeting report";
-      if (navigator.share) {
-        try { await navigator.share({ title: shareTitle, text: shareTitle + " - shared meeting report", url: shareUrl }); return; } catch (e) { /* cancelled: fall back to copy */ }
-      }
-      try { await navigator.clipboard.writeText(shareUrl); showToast("Link copied. Paste it into WhatsApp, Gmail or anywhere."); }
-      catch (e) { showToast("Copy this address: " + shareUrl); }
-    }
-
-    function safeName() {
-      return (reportData.title || "Meeting_Report").replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "Meeting_Report";
-    }
-    function download(blob, filename) {
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    }
-    function stamp(t) {
-      t = Number(t) || 0;
-      return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(Math.floor(t % 60)).padStart(2, "0");
-    }
-    function talkTotals() {
-      const out = {};
-      for (const [spk, per] of Object.entries(reportData.talk || {})) {
-        const sum = Object.values(per).reduce((a, b) => a + (Number(b) || 0), 0);
-        if (sum > 0) out[spk] = sum;
-      }
-      return out;
-    }
-
-    // Export PDF: direct download (falls back to the browser print dialog -> "Save as PDF")
-    async function exportPdf() {
-      const el = document.getElementById("reportContent");
-      if (!window.html2pdf) { window.print(); return; }
-      try {
-        showToast("Preparing PDF...");
-        await html2pdf().set({
-          margin: [10, 10, 10, 10],
-          filename: safeName() + ".pdf",
-          image: { type: "jpeg", quality: 0.96 },
-          html2canvas: { scale: 2, useCORS: true },
-          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-          pagebreak: { mode: ["css", "legacy"], avoid: [".topic-card", ".transcript-row", "tr"] },
-        }).from(el).save();
-        showToast("PDF downloaded");
-      } catch (err) {
-        console.error("PDF export error:", err);
-        window.print();
-      }
-    }
-
-    // Export Markdown: portable, pastes into Notion / Obsidian / GitHub / email
-    function exportMarkdown() {
-      const a = reportData.analysis || {};
-      const L = [];
-      L.push("# " + (reportData.title || "Meeting Report"), "");
-      L.push("- **Started:** " + (reportData.started_at || ""));
-      L.push("- **Duration:** " + (reportData.duration_minutes || 0) + " min");
-      if (reportData.platform) L.push("- **Platform:** " + reportData.platform);
-      if ((reportData.participants || []).length) L.push("- **Participants:** " + reportData.participants.join(", "));
-      L.push("", "## Summary", "", a.summary || "-", "");
-      if ((a.chapters || []).length) { L.push("## Timeline", ""); a.chapters.forEach(c => L.push("- **" + (c.start || "") + " " + (c.title || "") + "** - " + (c.summary || ""))); L.push(""); }
-      const marksMd = reportData.bookmarks || [], menMd = (reportData.transcript || []).filter(l => l.mention);
-      if (marksMd.length || menMd.length) {
-        L.push("## Highlights", "");
-        marksMd.forEach(b => L.push("- \u2B50 [" + stamp(b.t) + "] " + (b.text || "Bookmarked moment")));
-        menMd.forEach(l => L.push("- @ [" + stamp(l.t) + "] " + (l.speaker || "") + " mentioned you: " + (l.text || l.translation || "")));
-        L.push("");
-      }
-      if ((a.topics || []).length) { L.push("## What was discussed", ""); a.topics.forEach(t => L.push("- **" + t.title + ":** " + t.detail)); L.push(""); }
-      if ((a.key_points || []).length) { L.push("## Key points", ""); a.key_points.forEach(k => L.push("- " + k)); L.push(""); }
-      if ((a.decisions || []).length) { L.push("## Decisions", ""); a.decisions.forEach(d => L.push("- " + d)); L.push(""); }
-      if ((a.action_items || []).length) { L.push("## Action items", ""); a.action_items.forEach(i => L.push("- [ ] " + i.task + (i.owner ? " (" + i.owner + ")" : ""))); L.push(""); }
-      if ((a.open_questions || []).length) { L.push("## Open questions", ""); a.open_questions.forEach(q => L.push("- " + q)); L.push(""); }
-      if ((a.follow_up_email || {}).body) { L.push("## Draft follow-up email", "", "**Subject:** " + (a.follow_up_email.subject || ""), "", a.follow_up_email.body, ""); }
-      const totals = talkTotals(); const whole = Object.values(totals).reduce((x, y) => x + y, 0) || 1;
-      if (Object.keys(totals).length) { L.push("## Speaking time", ""); Object.entries(totals).forEach(([s, v]) => L.push("- " + s + ": " + (v / 60).toFixed(1) + " min (" + Math.round(v / whole * 100) + "%)")); L.push(""); }
-      if ((reportData.transcript || []).length) {
-        L.push("## Transcript", "");
-        reportData.transcript.forEach(l => { L.push("**[" + stamp(l.t) + "] " + l.speaker + ":** " + (l.text || "")); if (l.translation) L.push("> " + l.translation); L.push(""); });
-      }
-      download(new Blob([L.join("\n")], { type: "text/markdown;charset=utf-8" }), safeName() + ".md");
-      showToast("Markdown downloaded");
-    }
-
-    // Export DOCX via client-side docx.js: the complete report, same sections as the page
-    async function exportDocx() {
-      try {
-        const { Document, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, Packer } = docx;
-        const a = reportData.analysis || {};
-        const P = (text, opts) => new Paragraph(Object.assign({ text: String(text == null ? "" : text) }, opts || {}));
-        const H = (text) => P(text, { heading: HeadingLevel.HEADING_2 });
-        const bullet = (text) => P(text, { bullet: { level: 0 } });
-        const cell = (text, bold) => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: String(text || ""), bold: !!bold })] })] });
-
-        const kids = [P(reportData.title || "Meeting Report", { heading: HeadingLevel.HEADING_1 })];
-        kids.push(new Paragraph({ children: [
-          new TextRun({ text: "Started: ", bold: true }), new TextRun(String(reportData.started_at || "")),
-          new TextRun({ text: "   Duration: ", bold: true }), new TextRun((reportData.duration_minutes || 0) + " min"),
-          new TextRun({ text: "   Platform: ", bold: true }), new TextRun(String(reportData.platform || "-")),
-        ] }));
-        if ((reportData.participants || []).length) kids.push(new Paragraph({ children: [new TextRun({ text: "Participants: ", bold: true }), new TextRun(reportData.participants.join(", "))] }));
-        kids.push(H("Summary"), P(a.summary || "-"));
-        if ((a.chapters || []).length) { kids.push(H("Timeline")); a.chapters.forEach(c => kids.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: (c.start || "") + " " + (c.title || ""), bold: true }), new TextRun(" - " + (c.summary || ""))] }))); }
-        const marksDx = reportData.bookmarks || [], menDx = (reportData.transcript || []).filter(l => l.mention);
-        if (marksDx.length || menDx.length) {
-          kids.push(H("Highlights"));
-          marksDx.forEach(b => kids.push(bullet("[" + stamp(b.t) + "] Bookmarked: " + (b.text || ""))));
-          menDx.forEach(l => kids.push(bullet("[" + stamp(l.t) + "] " + (l.speaker || "") + " mentioned you: " + (l.text || l.translation || ""))));
-        }
-        if ((a.topics || []).length) { kids.push(H("What was discussed")); a.topics.forEach(t => kids.push(new Paragraph({ bullet: { level: 0 }, children: [new TextRun({ text: (t.title || "") + ": ", bold: true }), new TextRun(t.detail || "")] }))); }
-        if ((a.key_points || []).length) { kids.push(H("Key points")); a.key_points.forEach(k => kids.push(bullet(k))); }
-        if ((a.decisions || []).length) { kids.push(H("Decisions")); a.decisions.forEach(d => kids.push(bullet(d))); }
-        if ((a.action_items || []).length) {
-          kids.push(H("Action items"));
-          kids.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [
-            new TableRow({ children: [cell("Task", true), cell("Owner", true)] }),
-            ...a.action_items.map(i => new TableRow({ children: [cell(i.task), cell(i.owner || "-")] })),
-          ] }));
-        }
-        if ((a.open_questions || []).length) { kids.push(H("Open questions")); a.open_questions.forEach(q => kids.push(bullet(q))); }
-        if ((a.follow_up_email || {}).body) {
-          kids.push(H("Draft follow-up email"), new Paragraph({ children: [new TextRun({ text: "Subject: " + (a.follow_up_email.subject || ""), bold: true })] }));
-          String(a.follow_up_email.body).split("\n").forEach(line => kids.push(P(line)));
-        }
-        const totals = talkTotals(); const whole = Object.values(totals).reduce((x, y) => x + y, 0) || 1;
-        if (Object.keys(totals).length) {
-          kids.push(H("Speaking time"));
-          kids.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [
-            new TableRow({ children: [cell("Speaker", true), cell("Minutes", true), cell("Share", true)] }),
-            ...Object.entries(totals).sort((x, y) => y[1] - x[1]).map(([s, v]) => new TableRow({ children: [cell(s), cell((v / 60).toFixed(1)), cell(Math.round(v / whole * 100) + "%")] })),
-          ] }));
-        }
-        if ((reportData.transcript || []).length) {
-          kids.push(H("Full transcript"));
-          reportData.transcript.forEach(l => {
-            kids.push(new Paragraph({ children: [new TextRun({ text: "[" + stamp(l.t) + "] " + (l.speaker || "") + ": ", bold: true }), new TextRun(l.text || "")] }));
-            if (l.translation) kids.push(new Paragraph({ children: [new TextRun({ text: "    " + l.translation, italics: true })] }));
-          });
-        }
-        const blob = await Packer.toBlob(new Document({ sections: [{ children: kids }] }));
-        download(blob, safeName() + ".docx");
-        showToast("DOCX downloaded");
-      } catch (err) {
-        console.error("DOCX export error:", err);
-        showToast("Could not export DOCX: " + err.message);
-      }
-    }
-
-  </script>
+    download(await Packer.toBlob(new Document({ sections: [{ children: kids }] })), safeName() + ".docx"); showToast("DOCX downloaded");
+  } catch (err) { console.error("DOCX export error:", err); showToast("Could not export DOCX: " + err.message); }
+}
+</script>
 </body>
 </html>

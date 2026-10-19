@@ -220,6 +220,7 @@ class Session(QObject):
                 if x["speaker"] == "Others":
                     x["speaker"] = self.watcher.name_near(x["mono"]) or "Others"
         self.transcript.sort(key=lambda x: x["t"])
+        self.bookmarks = report.bookmark_context(self.bookmarks, self.transcript)  # why each bookmarked moment mattered
         text = "\n".join(
             f"[{int(x['t'] // 60):02d}:{int(x['t'] % 60):02d}] {x['speaker']}: {x['text'] or x['translation']}"
             for x in self.transcript
@@ -227,7 +228,7 @@ class Session(QObject):
         s = self.settings
         if text:
             try:
-                marks = [f"{stamp(b['t'])} {b['text'][:100]}".strip() for b in self.bookmarks]
+                marks = [f"{stamp(b['t'])} {b['text'][:100]}" for b in self.bookmarks if b.get("text")]
                 analysis = Gemini(s.api_key, s.report_model, s.fallback_model).analyse(
                     text, s.name, self.title or "Meeting", marks)
                 self.languages.update(analysis.get("languages") or [])

@@ -50,6 +50,6 @@ jobs:
             -d '{"title":"CI smoke test","analysis":{"summary":"ok"},"transcript":[],"talk":{}}')
           echo "$resp"
           id=$(echo "$resp" | python3 -c 'import sys, json; print(json.load(sys.stdin)["id"])')
-          curl -fsS "${URL}/r/${id}" | grep -q "Online Doc"
+          curl -fsS "${URL}/r/${id}" | grep -q "Meeting brief"
           curl -fsS "${URL}/api/report/${id}" | grep -q "CI smoke test"
           echo "live server OK: ${URL}/r/${id}"

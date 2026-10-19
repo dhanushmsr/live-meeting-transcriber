@@ -131,19 +131,26 @@ def _handle_ask(self: BaseHTTPRequestHandler) -> None:
     def reply(status: int, obj: dict) -> None:
         self._send(status, json.dumps(obj).encode("utf-8"), "application/json")
 
+    # Always read the request body before answering, even when refusing it. Replying and closing while the browser is
+    # still sending makes Windows reset the connection, and the user sees "network error" instead of the real reason.
+    try:
+        size = int(self.headers.get("Content-Length") or 0)
+    except ValueError:
+        size = 0
+    raw = self.rfile.read(min(size, 200_000)) if size > 0 else b""
+
     host = (self.headers.get("Host") or "").split(":")[0]
     if host not in ("localhost", "127.0.0.1", "[::1]") or not _same_origin(self):
         return reply(403, {"error": "forbidden"})
     if _asker is None:
         return reply(404, {"error": "Asking is not available"})
+    if size <= 0 or size > MAX_ASK_BYTES:
+        return reply(413, {"error": "Question too large"})
     try:
-        size = int(self.headers.get("Content-Length") or 0)
-        if size <= 0 or size > MAX_ASK_BYTES:
-            return reply(413, {"error": "Question too large"})
-        body = json.loads(self.rfile.read(size).decode("utf-8"))
+        body = json.loads(raw.decode("utf-8"))
         question = str(body.get("question", "")).strip()[:500]
         record = load(str(body.get("id", "")))
-    except (ValueError, OSError):
+    except (ValueError, OSError, AttributeError):
         return reply(400, {"error": "Bad request"})
     if not question:
         return reply(400, {"error": "Empty question"})

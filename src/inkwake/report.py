@@ -1,4 +1,4 @@
-"""Builds the .docx meeting report with charts."""
+"""Builds the .docx meeting report: a one-page brief first, the detail and the transcript behind it."""
 
 import io
 import re
@@ -10,175 +10,402 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from docx import Document  # noqa: E402
-from docx.enum.text import WD_ALIGN_PARAGRAPH  # noqa: E402
+from docx.enum.table import WD_TABLE_ALIGNMENT  # noqa: E402
+from docx.enum.text import WD_BREAK  # noqa: E402
+from docx.oxml import OxmlElement  # noqa: E402
+from docx.oxml.ns import qn  # noqa: E402
 from docx.shared import Inches, Pt, RGBColor  # noqa: E402
 
 from .config import reports_dir  # noqa: E402
 
 PALETTE = ["#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#0891b2", "#db2777", "#65a30d"]
+INK = RGBColor(0x0F, 0x17, 0x2A)
+MUTED = RGBColor(0x64, 0x74, 0x8B)
+ACCENT = RGBColor(0x25, 0x63, 0xEB)
+MERGE_GAP = 8.0  # seconds: consecutive lines by the same speaker closer than this read as one paragraph
+
+
+# ------------------------------------------------------------------ text helpers (also unit-tested)
+def stamp(t: float) -> str:
+    t = int(t or 0)
+    return f"{t // 60:02d}:{t % 60:02d}"
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"\W+", " ", s or "", flags=re.UNICODE).lower().strip()
+
+
+def same_text(a: str, b: str) -> bool:
+    return _norm(a) == _norm(b)
+
+
+def similar_text(a: str, b: str, threshold: float = 0.8) -> bool:
+    """True when two texts are the same words give or take speech-to-text wobble (an English line and its 'translation')."""
+    wa, wb = set(_norm(a).split()), set(_norm(b).split())
+    if not wa or not wb:
+        return wa == wb
+    return len(wa & wb) / max(len(wa), len(wb)) >= threshold
+
+
+def first_sentence(text: str, limit: int = 220) -> str:
+    text = (text or "").strip()
+    m = re.match(r"(.+?[.!?])(\s|$)", text, flags=re.S)
+    out = m.group(1) if m else text
+    return out if len(out) <= limit else out[: limit - 1].rstrip() + "..."
+
+
+def merge_transcript(lines, gap: float = MERGE_GAP) -> list[dict]:
+    """One paragraph per speaker turn instead of one per phrase; drops translations that merely repeat the text."""
+    merged: list[dict] = []
+    for x in sorted(lines, key=lambda l: l.get("t", 0)):
+        text = (x.get("text") or "").strip()
+        tr = (x.get("translation") or "").strip()
+        if not text and not tr:
+            continue
+        prev = merged[-1] if merged else None
+        if prev and prev["speaker"] == x.get("speaker") and x.get("t", 0) - prev["last_t"] <= gap:
+            prev["text"] = f"{prev['text']} {text}".strip()
+            prev["translation"] = f"{prev['translation']} {tr}".strip()
+            prev["last_t"] = x.get("t", 0)
+            prev["mention"] = prev["mention"] or bool(x.get("mention"))
+        else:
+            merged.append({"t": x.get("t", 0), "last_t": x.get("t", 0), "speaker": x.get("speaker") or "Speaker",
+                           "text": text, "translation": tr, "mention": bool(x.get("mention"))})
+    for m in merged:
+        if not m["text"]:  # only a translation exists
+            m["text"], m["translation"] = m["translation"], ""
+        elif similar_text(m["text"], m["translation"]):
+            m["translation"] = ""
+    return merged
+
+
+def bookmark_context(bookmarks, transcript, within: float = 30.0) -> list[dict]:
+    """Give each bookmark the words nearest to it, so the report says WHY the moment mattered."""
+    out = []
+    for b in bookmarks or []:
+        b = dict(b)
+        if not (b.get("text") or "").strip() and transcript:
+            near = min(transcript, key=lambda l: abs(l.get("t", 0) - b.get("t", 0)))
+            if abs(near.get("t", 0) - b.get("t", 0)) <= within:
+                b["text"] = ((near.get("translation") or near.get("text") or "").strip())[:160]
+        out.append(b)
+    return out
+
+
+def speaker_totals(talk) -> dict[str, float]:
+    return {s: sum(per.values()) for s, per in (talk or {}).items() if sum(per.values()) > 0}
+
+
+def real_speakers(totals: dict[str, float]) -> dict[str, float]:
+    """Speakers worth charting: a single bar or 'Others 100%' tells the reader nothing."""
+    named = {s: v for s, v in totals.items() if s.lower() != "others"}
+    return totals if len(totals) >= 2 and len(named) >= 1 else {}
+
+
+# ------------------------------------------------------------------ docx helpers
+TCPR_ORDER = ["tcW", "gridSpan", "hMerge", "vMerge", "tcBorders", "shd", "noWrap", "tcMar", "textDirection",
+              "tcFitText", "vAlign", "hideMark"]
+
+
+def _tcpr_put(tcPr, el) -> None:
+    """Add/replace a child of <w:tcPr> and keep children in schema order (Word rejects other orders)."""
+    for old in tcPr.findall(el.tag):
+        tcPr.remove(old)
+    tcPr.append(el)
+    kids = sorted(tcPr, key=lambda k: TCPR_ORDER.index(k.tag.split("}")[1]) if k.tag.split("}")[1] in TCPR_ORDER else 99)
+    for k in kids:
+        tcPr.remove(k)
+    for k in kids:
+        tcPr.append(k)
+
+
+def _shade(cell, fill: str) -> None:
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), fill)
+    _tcpr_put(tcPr, shd)
+
+
+def _borders(cell, **edges) -> None:
+    """edges: left=("2563EB", 24), ... (colour, eighths of a point) or None for no line."""
+    tcPr = cell._tc.get_or_add_tcPr()
+    b = OxmlElement("w:tcBorders")
+    for edge in ("top", "left", "bottom", "right"):
+        el = OxmlElement(f"w:{edge}")
+        spec = edges.get(edge)
+        if spec:
+            el.set(qn("w:val"), "single")
+            el.set(qn("w:color"), spec[0])
+            el.set(qn("w:sz"), str(spec[1]))
+        else:
+            el.set(qn("w:val"), "nil")
+        b.append(el)
+    _tcpr_put(tcPr, b)
+
+
+def _cell_margins(cell, top=90, bottom=90, left=160, right=160) -> None:
+    tcPr = cell._tc.get_or_add_tcPr()
+    m = OxmlElement("w:tcMar")
+    for k, v in (("top", top), ("left", left), ("bottom", bottom), ("right", right)):
+        e = OxmlElement(f"w:{k}")
+        e.set(qn("w:w"), str(v))
+        e.set(qn("w:type"), "dxa")
+        m.append(e)
+    _tcpr_put(tcPr, m)
+
+
+def _run(par, text, size=11, bold=False, italic=False, color=INK):
+    r = par.add_run(text)
+    r.bold, r.italic = bold, italic
+    r.font.size = Pt(size)
+    r.font.color.rgb = color
+    return r
+
+
+def _space(par, before=0, after=4, line=None):
+    pf = par.paragraph_format
+    pf.space_before, pf.space_after = Pt(before), Pt(after)
+    if line:
+        pf.line_spacing = line
+
+
+def _heading(doc, text: str) -> None:
+    p = doc.add_paragraph()
+    _space(p, before=16, after=5)
+    p.paragraph_format.keep_with_next = True
+    _run(p, text, size=13.5, bold=True)
+    pPr = p._p.get_or_add_pPr()
+    bdr = OxmlElement("w:pBdr")
+    bottom = OxmlElement("w:bottom")
+    for k, v in (("val", "single"), ("sz", "6"), ("space", "2"), ("color", "E2E8F0")):
+        bottom.set(qn(f"w:{k}"), v)
+    bdr.append(bottom)
+    pPr.insert_element_before(bdr, "w:shd", "w:tabs", "w:suppressAutoHyphens", "w:kinsoku", "w:wordWrap",
+                              "w:overflowPunct", "w:topLinePunct", "w:autoSpaceDE", "w:autoSpaceDN", "w:bidi",
+                              "w:adjustRightInd", "w:snapToGrid", "w:spacing", "w:ind", "w:contextualSpacing",
+                              "w:mirrorIndents", "w:suppressOverlap", "w:jc", "w:textDirection", "w:textAlignment",
+                              "w:textboxTightWrap", "w:outlineLvl", "w:divId", "w:cnfStyle", "w:rPr", "w:sectPr",
+                              "w:pPrChange")
+
+
+def _bullet(doc, text: str, bold_lead: str = ""):
+    p = doc.add_paragraph(style="List Bullet")
+    _space(p, after=3)
+    if bold_lead:
+        _run(p, bold_lead, bold=True)
+    _run(p, text)
+    return p
+
+
+def _callout(doc, label: str, body: str, fill="EFF6FF", bar="2563EB", size=13):
+    t = doc.add_table(rows=1, cols=1)
+    t.alignment = WD_TABLE_ALIGNMENT.CENTER
+    c = t.rows[0].cells[0]
+    _shade(c, fill)
+    _borders(c, left=(bar, 36))
+    _cell_margins(c, 120, 120, 200, 200)
+    p = c.paragraphs[0]
+    _space(p, after=2)
+    _run(p, label.upper(), size=8.5, bold=True, color=ACCENT if bar == "2563EB" else MUTED)
+    p2 = c.add_paragraph()
+    _space(p2, after=0, line=1.15)
+    _run(p2, body, size=size)
+    doc.add_paragraph().paragraph_format.space_after = Pt(0)
+
+
+def _table(doc, header: list[str], rows: list[list[str]], widths: list[float]):
+    t = doc.add_table(rows=1, cols=len(header))
+    t.alignment = WD_TABLE_ALIGNMENT.CENTER
+    for i, h in enumerate(header):
+        c = t.rows[0].cells[i]
+        _shade(c, "F1F5F9")
+        _borders(c, bottom=("CBD5E1", 8))
+        _cell_margins(c, 70, 70, 120, 120)
+        _run(c.paragraphs[0], h.upper(), size=8.5, bold=True, color=MUTED)
+    for row in rows:
+        cells = t.add_row().cells
+        for i, v in enumerate(row):
+            _borders(cells[i], bottom=("E2E8F0", 4))
+            _cell_margins(cells[i], 80, 80, 120, 120)
+            _run(cells[i].paragraphs[0], v, size=10.5)
+    for row in t.rows:
+        for i, w in enumerate(widths):
+            row.cells[i].width = Inches(w)
+    return t
 
 
 def _png(fig) -> io.BytesIO:
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=170, bbox_inches="tight")
+    fig.savefig(buf, format="png", dpi=170, bbox_inches="tight", transparent=False, facecolor="white")
     plt.close(fig)
     buf.seek(0)
     return buf
 
 
 def _share_chart(totals: dict[str, float]):
-    fig, ax = plt.subplots(figsize=(5, 3.6))
+    fig, ax = plt.subplots(figsize=(3.6, 2.6))
     names = list(totals)
-    ax.pie([totals[n] for n in names], labels=names, colors=PALETTE[: len(names)], autopct="%1.0f%%",
-           startangle=90, wedgeprops={"width": 0.45, "edgecolor": "white"})
-    ax.set_title("Share of talk time")
+    ax.pie([totals[n] for n in names], labels=names, colors=PALETTE[: len(names)], autopct="%1.0f%%", startangle=90,
+           wedgeprops={"width": 0.45, "edgecolor": "white"}, textprops={"fontsize": 9})
     return _png(fig)
 
 
-def _timeline_chart(talk: dict[str, dict[int, float]], minutes: float):
-    n = max(1, int(minutes) + 1)
-    fig, ax = plt.subplots(figsize=(6.5, 3.2))
-    bottom = [0.0] * n
-    for i, (spk, per) in enumerate(talk.items()):
-        vals = [per.get(m, 0.0) / 60 for m in range(n)]
-        ax.bar(range(n), vals, bottom=bottom, label=spk, color=PALETTE[i % len(PALETTE)], width=0.8)
-        bottom = [b + v for b, v in zip(bottom, vals)]
-    ax.set_xlabel("Minute of meeting")
-    ax.set_ylabel("Minutes spoken")
-    ax.set_title("Who spoke when")
-    ax.spines[["top", "right"]].set_visible(False)
-    ax.legend(frameon=False, fontsize=8)
-    return _png(fig)
-
-
-def _heading(doc, text: str) -> None:
-    doc.add_heading(text, level=2)
-
-
-def _bullets(doc, items) -> None:
-    for it in items or []:
-        doc.add_paragraph(str(it), style="List Bullet")
-
-
+# ------------------------------------------------------------------ the report
 def build(*, settings, title, platform, started: datetime, minutes: float, transcript, talk, analysis,
           languages, meetings_total: int, minutes_total: float, participants=(), bookmarks=()) -> Path:
+    analysis = analysis or {}
     doc = Document()
+    sec = doc.sections[0]
+    sec.left_margin = sec.right_margin = Inches(0.9)
+    sec.top_margin, sec.bottom_margin = Inches(0.8), Inches(0.8)
     doc.styles["Normal"].font.name = "Calibri"
     doc.styles["Normal"].font.size = Pt(11)
 
-    h = doc.add_heading("Meeting Report", level=0)
-    h.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    sub = doc.add_paragraph(f"{title or 'Meeting'}  |  {started:%A, %d %B %Y, %H:%M}")
-    sub.runs[0].font.color.rgb = RGBColor(0x55, 0x55, 0x55)
+    host = (getattr(settings, "name", "") or "").strip()
+    totals = speaker_totals(talk)
+    heading = title or analysis.get("title") or "Meeting report"
 
-    totals = {s: sum(per.values()) for s, per in talk.items() if sum(per.values()) > 0}
-    rows = [
-        ("Started by", settings.name or "-"),
-        ("Platform", platform or "-"),
-        ("Duration", f"{minutes:.1f} min"),
-        ("Participants", ", ".join(participants) or (", ".join(totals) if totals else "-")),
-        ("Languages", ", ".join(languages) or "-"),
-        ("Overall tone", str(analysis.get("sentiment") or "-")),
-        ("Your total meetings with Ink", str(meetings_total)),
-        ("Your total meeting minutes", f"{minutes_total:.1f} min"),
-    ]
-    t = doc.add_table(rows=0, cols=2)
-    t.style = "Light List Accent 1"
-    for k, v in rows:
-        c = t.add_row().cells
-        c[0].text, c[1].text = k, v
+    # ---- header: title + one quiet line of facts (only the facts we actually have)
+    p = doc.add_paragraph()
+    _space(p, after=2)
+    _run(p, heading, size=24, bold=True)
+    others = [n for n in dict.fromkeys(list(participants) + list(totals)) if n.lower() not in ("others", "you")
+              and (not host or host.lower() not in n.lower())]
+    facts = [f"{started:%a %d %b %Y, %H:%M}", f"{max(minutes, 0.1):.0f} min" if minutes >= 1 else f"{minutes * 60:.0f} sec"]
+    if platform:
+        facts.append(platform)
+    if others:
+        facts.append("with " + ", ".join(others[:6]))
+    if analysis.get("sentiment"):
+        facts.append(f"tone: {str(analysis['sentiment']).lower()}")
+    p = doc.add_paragraph()
+    _space(p, after=10)
+    _run(p, "  ·  ".join(facts), size=10, color=MUTED)
 
-    _heading(doc, "Summary")
-    doc.add_paragraph(analysis.get("summary") or "-")
+    # ---- the whole point, in one sentence
+    tldr = (analysis.get("tldr") or first_sentence(analysis.get("summary", ""))).strip()
+    if tldr:
+        _callout(doc, "In short", tldr)
 
-    if analysis.get("chapters"):
+    # ---- what happened and what to do
+    decisions = analysis.get("decisions") or []
+    if decisions:
+        _heading(doc, "Decisions")
+        for d in decisions:
+            p = doc.add_paragraph()
+            _space(p, after=3)
+            p.paragraph_format.left_indent = Inches(0.25)
+            p.paragraph_format.first_line_indent = Inches(-0.25)
+            _run(p, "✓  ", bold=True, color=RGBColor(0x16, 0xA3, 0x4A))
+            _run(p, str(d))
+
+    actions = analysis.get("action_items") or []
+    if actions:
+        _heading(doc, "Action items")
+        has_due = any((a.get("due") or "").strip() for a in actions)
+        header = ["Task", "Who"] + (["When"] if has_due else [])
+        widths = [4.0, 1.4] + ([1.3] if has_due else [])
+        if not has_due:
+            widths = [4.9, 1.8]
+        rows = [[str(a.get("task", "")), str(a.get("owner") or "-")] + ([str(a.get("due") or "-")] if has_due else [])
+                for a in actions]
+        _table(doc, header, rows, widths)
+
+    if analysis.get("summary") and tldr and not same_text(tldr, analysis["summary"]):
+        _heading(doc, "Context")
+        p = doc.add_paragraph()
+        _space(p, after=4, line=1.15)
+        _run(p, analysis["summary"])
+
+    takeaways = analysis.get("takeaways") or analysis.get("key_points") or []
+    if takeaways:
+        _heading(doc, "Worth remembering")
+        for k in takeaways:
+            _bullet(doc, str(k))
+
+    if analysis.get("open_questions"):
+        _heading(doc, "Still open")
+        for q in analysis["open_questions"]:
+            _bullet(doc, str(q))
+
+    # ---- detail
+    chapters = analysis.get("chapters") or []
+    if chapters:
         _heading(doc, "Timeline")
-        for ch in analysis["chapters"]:
-            p = doc.add_paragraph(style="List Bullet")
-            p.add_run(f"{ch.get('start', '')}  {ch.get('title', '')}").bold = True
-            if ch.get("summary"):
-                p.add_run(f" - {ch['summary']}")
+        rows = [[str(c.get("start", "")), f"{c.get('title', '')}" + (f" – {c['summary']}" if c.get("summary") else "")]
+                for c in chapters]
+        _table(doc, ["Time", "What happened"], rows, [0.8, 5.9])
 
+    bookmarks = bookmark_context(bookmarks, transcript)
     mentions = [x for x in transcript if x.get("mention")]
     if bookmarks or mentions:
         _heading(doc, "Highlights")
         for b in bookmarks:
-            m, sec = divmod(int(b.get("t", 0)), 60)
-            p = doc.add_paragraph(style="List Bullet")
-            p.add_run(f"[{m:02d}:{sec:02d}] Bookmarked").bold = True
-            if b.get("text"):
-                p.add_run(f": {b['text']}")
+            _bullet(doc, b.get("text") or "You bookmarked this moment.", f"★ {stamp(b.get('t', 0))}  ")
         for x in mentions:
-            m, sec = divmod(int(x.get("t", 0)), 60)
-            p = doc.add_paragraph(style="List Bullet")
-            p.add_run(f"[{m:02d}:{sec:02d}] You were mentioned by {x['speaker']}").bold = True
-            p.add_run(f": {x.get('text') or x.get('translation', '')}")
+            _bullet(doc, x.get("translation") or x.get("text") or "", f"@ {stamp(x.get('t', 0))}  {x['speaker']} mentioned you: ")
 
-    if analysis.get("topics"):
-        _heading(doc, "What was discussed")
-        for tp in analysis["topics"]:
-            p = doc.add_paragraph(style="List Bullet")
-            p.add_run(str(tp.get("title", "")) + ": ").bold = True
-            p.add_run(str(tp.get("detail", "")))
+    speakers = real_speakers(totals)
+    if speakers:
+        _heading(doc, "Who spoke")
+        doc.add_picture(_share_chart(speakers), width=Inches(2.6))
+        whole = sum(speakers.values())
+        _table(doc, ["Speaker", "Minutes", "Share"],
+               [[s, f"{v / 60:.1f}", f"{v / whole:.0%}"] for s, v in sorted(speakers.items(), key=lambda kv: -kv[1])],
+               [3.4, 1.6, 1.6])
 
-    if analysis.get("key_points"):
-        _heading(doc, "Key points")
-        _bullets(doc, analysis["key_points"])
-    if analysis.get("decisions"):
-        _heading(doc, "Decisions")
-        _bullets(doc, analysis["decisions"])
-    if analysis.get("action_items"):
-        _heading(doc, "Action items")
-        at = doc.add_table(rows=1, cols=2)
-        at.style = "Light Grid Accent 1"
-        at.rows[0].cells[0].text, at.rows[0].cells[1].text = "Task", "Owner"
-        for a in analysis["action_items"]:
-            c = at.add_row().cells
-            c[0].text, c[1].text = str(a.get("task", "")), str(a.get("owner") or "-")
-    if analysis.get("follow_ups"):
-        _heading(doc, "Suggested follow-ups")
-        _bullets(doc, analysis["follow_ups"])
-
-    if analysis.get("open_questions"):
-        _heading(doc, "Open questions")
-        _bullets(doc, analysis["open_questions"])
     email = analysis.get("follow_up_email") or {}
     if email.get("body"):
-        _heading(doc, "Draft follow-up email")
-        doc.add_paragraph().add_run(f"Subject: {email.get('subject', '')}").bold = True
+        _heading(doc, "Follow-up email (draft)")
+        t = doc.add_table(rows=1, cols=1)
+        c = t.rows[0].cells[0]
+        _shade(c, "F8FAFC")
+        _borders(c, top=("E2E8F0", 6), left=("E2E8F0", 6), bottom=("E2E8F0", 6), right=("E2E8F0", 6))
+        _cell_margins(c, 140, 140, 200, 200)
+        p = c.paragraphs[0]
+        _space(p, after=6)
+        _run(p, "Subject: ", size=10.5, bold=True, color=MUTED)
+        _run(p, str(email.get("subject", "")), size=10.5, bold=True)
         for para in str(email["body"]).split("\n"):
-            doc.add_paragraph(para)
+            q = c.add_paragraph()
+            _space(q, after=0 if para.strip() else 2, line=1.1)
+            _run(q, para, size=10.5)
 
-    if totals:
-        _heading(doc, "Speaking analysis")
-        doc.add_picture(_share_chart(totals), width=Inches(3.8))
-        doc.add_picture(_timeline_chart(talk, minutes), width=Inches(6.2))
-        tt = doc.add_table(rows=1, cols=3)
-        tt.style = "Light Grid Accent 1"
-        for i, label in enumerate(("Speaker", "Minutes", "Share")):
-            tt.rows[0].cells[i].text = label
-        whole = sum(totals.values())
-        for spk, sec in sorted(totals.items(), key=lambda kv: -kv[1]):
-            c = tt.add_row().cells
-            c[0].text, c[1].text, c[2].text = spk, f"{sec / 60:.1f}", f"{sec / whole:.0%}"
-        doc.add_paragraph("Remote speakers are named from the active-speaker highlight on the meeting screen; unknown moments are grouped as 'Others'.").runs[0].italic = True
+    p = doc.add_paragraph()
+    _space(p, before=14)
+    _run(p, f"Ink has recorded {meetings_total} meeting{'s' if meetings_total != 1 else ''} for you "
+            f"({minutes_total:.0f} min in total).", size=9, color=MUTED)
 
+    # ---- the transcript, readable: one paragraph per turn, no repeated lines
     if transcript:
-        doc.add_page_break()
+        doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
         _heading(doc, "Full transcript")
-        for x in transcript:
+        langs = ", ".join(languages)
+        if langs:
             p = doc.add_paragraph()
-            p.add_run(f"[{int(x['t'] // 60):02d}:{int(x['t'] % 60):02d}] {x['speaker']}: ").bold = True
-            p.add_run(x["text"])
-            if x.get("translation"):
-                r = p.add_run(f"\n    -> {x['translation']}")
-                r.italic = True
-                r.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
+            _run(p, f"Languages heard: {langs}. English is shown under any line that was spoken in another language.",
+                 size=9.5, color=MUTED)
+        for m in merge_transcript(transcript):
+            p = doc.add_paragraph()
+            _space(p, before=6, after=1, line=1.1)
+            _run(p, f"{stamp(m['t'])}  ", size=9, color=MUTED)
+            _run(p, f"{m['speaker']}  ", size=10.5, bold=True, color=ACCENT)
+            if m["mention"]:
+                _run(p, "@you  ", size=9, bold=True, color=RGBColor(0x7C, 0x3A, 0xED))
+            _run(p, m["text"], size=10.5)
+            if m["translation"]:
+                q = doc.add_paragraph()
+                _space(q, after=2, line=1.1)
+                q.paragraph_format.left_indent = Inches(0.45)
+                _run(q, "In English: ", size=9.5, bold=True, color=MUTED)
+                _run(q, m["translation"], size=10, italic=True, color=MUTED)
 
     out = reports_dir(settings.name)
     out.mkdir(parents=True, exist_ok=True)
     safe = re.sub(r'[<>:"/\\|?*\r\n]', "", title).strip(" .")[:80]
-    stamp = f"{started:%Y-%m-%d %H-%M}"
-    path = out / (f"{safe} - {stamp}.docx" if safe else f"{stamp}.docx")
+    stamp_name = f"{started:%Y-%m-%d %H-%M}"
+    path = out / (f"{safe} - {stamp_name}.docx" if safe else f"{stamp_name}.docx")
     doc.save(path)
     return path

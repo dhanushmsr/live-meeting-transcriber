@@ -54,21 +54,30 @@ class Gemini:
     def analyse(self, transcript: str, host: str, title: str, bookmarks: list[str] | None = None) -> dict:
         marks = ""
         if bookmarks:
-            marks = ("\nThe host bookmarked these moments as important, so reflect them in the key points: "
-                     + "; ".join(bookmarks) + ".")
+            marks = ("\nThe host bookmarked these moments, so make sure what was said there is covered (never mention "
+                     "the bookmarks themselves): " + "; ".join(bookmarks) + ".")
         prompt = (
-            "You are an executive assistant analysing a meeting for the person who started it"
-            f"{' (' + host + ')' if host else ''}. The transcript may be in several languages; write your "
-            "analysis in English. Be specific and faithful to the transcript; do not invent facts. "
-            'Return JSON only: {"summary": "<one concise paragraph>", '
-            '"topics": [{"title": str, "detail": str}], "key_points": [str], "decisions": [str], '
-            '"action_items": [{"task": str, "owner": str}], "languages": [str], "sentiment": str, '
-            '"follow_ups": [str], "open_questions": [<questions raised but not answered>], '
-            '"chapters": [{"start": "mm:ss", "title": str, "summary": "<one sentence>"}], '
-            '"follow_up_email": {"subject": str, "body": "<plain-text email from the host to the participants: thank '
-            "them, recap decisions, list action items with owners and next steps, sign off with the host's name; "
-            'no placeholders>"}}. Chapters are the main stretches of the meeting in order, using the transcript '
-            f"timestamps.{marks} Meeting: {title}.\n\nTranscript:\n{transcript[:MAX_TRANSCRIPT_CHARS]}"
+            "You write meeting briefs for busy people"
+            f"{' (the reader is ' + host + ')' if host else ''}. The transcript may be in several languages and "
+            "may be messy speech-to-text; write everything in plain English. Be faithful to the transcript and never "
+            "invent facts, names, dates or owners. Write for someone who has 30 seconds: short sentences, no filler, "
+            "no corporate jargon, and NEVER say the same fact in more than one section. If a section has nothing "
+            "real to say, return an empty list or an empty string for it. "
+            'Return JSON only: {"title": "<what the meeting was about, max 7 words>", '
+            '"tldr": "<ONE plain sentence, max 25 words: the single most important outcome>", '
+            '"summary": "<2-3 short sentences of context that the other sections do not already give>", '
+            '"decisions": [<things that were decided, max 6, one short line each>], '
+            '"action_items": [{"task": "<something a person must do, starting with a verb>", "owner": "<name or empty>", '
+            '"due": "<deadline if one was said, else empty>"}], '
+            '"takeaways": [<max 5 short points worth remembering that are NOT decisions or action items>], '
+            '"open_questions": [<questions raised but left unanswered>], '
+            '"chapters": [{"start": "mm:ss", "title": "<max 6 words>", "summary": "<max 12 words>"}], '
+            '"follow_up_email": {"subject": str, "body": "<plain-text email from the host to the participants, under '
+            "120 words: one line of thanks, the decisions, the action items with owners and dates, next step; sign off "
+            'with the host\'s name if known, no placeholders>"}, '
+            '"languages": [str], "sentiment": "<one word>"}. '
+            "Chapters are the main stretches of the meeting in order (at most 6) and use the transcript timestamps. "
+            f"{marks} Meeting: {title or 'unknown'}.\n\nTranscript:\n{transcript[:MAX_TRANSCRIPT_CHARS]}"
         )
         data = self._with_fallback(prompt, True, timeout_ms=120_000)
         return data if isinstance(data, dict) else {}

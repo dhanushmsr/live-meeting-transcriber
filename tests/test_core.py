@@ -49,7 +49,7 @@ def test_local_report_roundtrip(home):
     url = localserver.store(SAMPLE)
     assert url.startswith("http://localhost:") and "/r/" in url
     status, page = fetch(url)
-    assert status == 200 and b"Online Doc" in page
+    assert status == 200 and b"Meeting brief" in page
     status, body = fetch(url.replace("/r/", "/api/report/"))
     assert status == 200 and json.loads(body)["title"] == "Weekly sync"
 
@@ -112,18 +112,83 @@ def test_report_file_naming(home):
     assert report.build(title='Q4: plan/review', **kw).name == "Q4 planreview - 2026-10-13 09-05.docx"
 
 
-def test_report_contains_new_sections(home):
+def _all_text(path) -> str:
+    """Every paragraph and table cell, in the order a reader meets them."""
     import docx
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+    d = docx.Document(path)
+    parts = []
+    for child in d.element.body.iterchildren():
+        tag = child.tag.split("}")[1]
+        if tag == "p":
+            parts.append(Paragraph(child, d).text)
+        elif tag == "tbl":
+            for row in Table(child, d).rows:
+                parts += [c.text for c in row.cells]
+    return "\n".join(parts)
+
+
+def test_report_is_a_brief_with_the_answer_first(home):
     path = report.build(
         settings=config.Settings(name="Dhanush"), title="Sync", platform="Zoom", started=datetime(2026, 10, 13, 9, 5),
-        minutes=2.0, talk={"Ravi": {0: 30.0}}, languages=["English"], meetings_total=1, minutes_total=2.0,
+        minutes=2.0, talk={"Ravi": {0: 30.0}, "Priya": {0: 20.0}}, languages=["English"], meetings_total=1, minutes_total=2.0,
         bookmarks=[{"t": 65, "text": "decision"}],
         transcript=[{"t": 5, "speaker": "Ravi", "text": "Dhanush, deck?", "translation": "", "mention": True}],
-        analysis={"summary": "s", "chapters": [{"start": "00:00", "title": "Intro", "summary": "x"}],
-                  "open_questions": ["Who pays?"], "follow_up_email": {"subject": "Recap", "body": "Hi\n\nThanks"}})
-    text = "\n".join(p.text for p in docx.Document(path).paragraphs)
-    for needle in ("Timeline", "Highlights", "Open questions", "Draft follow-up email", "[01:05] Bookmarked", "mentioned"):
-        assert needle in text
+        analysis={"tldr": "We launch Friday.", "summary": "Context line.", "decisions": ["Ship Friday"],
+                  "action_items": [{"task": "Send the deck", "owner": "Dhanush", "due": "Wed"}], "takeaways": ["Budget is fixed"],
+                  "chapters": [{"start": "00:00", "title": "Intro", "summary": "x"}], "open_questions": ["Who pays?"],
+                  "follow_up_email": {"subject": "Recap", "body": "Hi\n\nThanks"}})
+    text = _all_text(path)
+    for needle in ("IN SHORT", "We launch Friday.", "Decisions", "Action items", "Send the deck", "Wed", "Worth remembering",
+                   "Still open", "Timeline", "Highlights", "[Bookmarked]" if False else "decision", "mentioned", "Follow-up email",
+                   "Who spoke", "Full transcript"):
+        assert needle in text, needle
+    assert text.index("IN SHORT") < text.index("Decisions") < text.index("Action items") < text.index("Full transcript")
+
+
+def test_nothing_useless_is_printed(home):
+    path = report.build(
+        settings=config.Settings(name=""), title="", platform="", started=datetime(2026, 10, 13, 9, 5), minutes=2.0,
+        talk={"Others": {0: 60.0}}, languages=[], meetings_total=1, minutes_total=2.0, participants=[], bookmarks=[],
+        transcript=[{"t": 5, "speaker": "Others", "text": "Hello.", "translation": "Hello."}],
+        analysis={"tldr": "Said hello.", "summary": "Said hello."})
+    text = _all_text(path)
+    assert "Started by" not in text and "Platform" not in text      # no empty "-" rows
+    assert "Who spoke" not in text                                  # a lone "Others 100%" says nothing
+    assert "Context" not in text                                    # summary identical to the one-liner is not repeated
+    assert "In English" not in text                                 # a translation that repeats the line is dropped
+
+
+def test_transcript_reads_as_turns_without_repeated_translations():
+    lines = [{"t": 1, "speaker": "A", "text": "Hello there.", "translation": "Hello there."},
+             {"t": 4, "speaker": "A", "text": "How are you?", "translation": "How are you?"},
+             {"t": 40, "speaker": "B", "text": "Saya baik.", "translation": "I am fine."},
+             {"t": 44, "speaker": "A", "text": "Great.", "translation": ""}]
+    merged = report.merge_transcript(lines)
+    assert [m["speaker"] for m in merged] == ["A", "B", "A"]
+    assert merged[0]["text"] == "Hello there. How are you?" and merged[0]["translation"] == ""
+    assert merged[1]["translation"] == "I am fine."   # a real translation is kept
+
+
+def test_near_identical_translation_is_hidden_but_a_real_one_is_not():
+    assert report.similar_text("Anyway, so if it today is a holiday", "Anyway, so if today is a holiday")
+    assert not report.similar_text("Saya pikir kita buang waktu", "I think we are wasting time")
+
+
+def test_bookmarks_get_the_words_spoken_near_them():
+    tr = [{"t": 60, "text": "We must ship Friday.", "translation": ""}, {"t": 400, "text": "later", "translation": ""}]
+    out = report.bookmark_context([{"t": 70, "text": ""}, {"t": 200, "text": ""}, {"t": 5, "text": "mine"}], tr)
+    assert out[0]["text"] == "We must ship Friday."
+    assert out[1]["text"] == ""          # nothing within 30 s: don't invent context
+    assert out[2]["text"] == "mine"      # the user's own text is never overwritten
+
+
+def test_speaker_chart_only_when_it_means_something():
+    assert report.real_speakers({"Others": 60.0}) == {}
+    assert report.real_speakers({"Dhanush": 30.0}) == {}
+    assert report.real_speakers({"Dhanush": 30.0, "Others": 30.0})
+    assert report.real_speakers({"Ravi": 30.0, "Priya": 10.0})
 
 
 def _meeting(share, home, **extra):

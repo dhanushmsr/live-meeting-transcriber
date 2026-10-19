@@ -60,10 +60,13 @@ function sanitize(body) {
     participants: list(body.participants, 200).map((x) => str(x, 120)).filter(Boolean),
     languages: list(body.languages, 40).map((x) => str(x, 40)).filter(Boolean),
     analysis: {
+      title: str(a.title, 200),
+      tldr: str(a.tldr, 600),
       summary: str(a.summary, 8000),
       sentiment: str(a.sentiment, 80),
       topics: list(a.topics, 100).map((t) => ({ title: str(t && t.title, 300), detail: str(t && t.detail, 2000) })),
       key_points: list(a.key_points, 200).map((x) => str(x, 1000)),
+      takeaways: list(a.takeaways, 50).map((x) => str(x, 1000)),
       decisions: list(a.decisions, 200).map((x) => str(x, 1000)),
       follow_ups: list(a.follow_ups, 200).map((x) => str(x, 1000)),
       open_questions: list(a.open_questions, 200).map((x) => str(x, 1000)),
@@ -72,7 +75,7 @@ function sanitize(body) {
         subject: str(a.follow_up_email && a.follow_up_email.subject, 300),
         body: str(a.follow_up_email && a.follow_up_email.body, 8000),
       },
-      action_items: list(a.action_items, 200).map((x) => ({ task: str(x && x.task, 1000), owner: str(x && x.owner, 120) })),
+      action_items: list(a.action_items, 200).map((x) => ({ task: str(x && x.task, 1000), owner: str(x && x.owner, 120), due: str(x && x.due, 120) })),
     },
     bookmarks: list(body.bookmarks, 200).map((b) => ({ t: Number(b && b.t) || 0, text: str(b && b.text, 300) })),
     transcript: list(body.transcript, MAX_TRANSCRIPT_LINES).map((l) => ({

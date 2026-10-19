@@ -70,14 +70,23 @@ The key is stored only on your machine in `~/.inkwake/config.json`. Never commit
 
 ## The report
 
-Opens in your browser when the meeting ends: summary, **timeline** of chapters, **highlights** (bookmarks and times
-you were mentioned), topics, key points, decisions, action items, open questions, a ready-to-send **follow-up email**
-(copy, open in your email app, or send via WhatsApp), speaking-time charts, and a **searchable transcript**.
+Built to be read in 30 seconds. The first screen answers the three questions that matter:
+
+- **In short:** one plain sentence with the main outcome.
+- **Decisions:** what was agreed.
+- **Action items:** who does what, and by when (tick them off on the page).
+
+Below that, only if there is something to say: context, things worth remembering, questions still open, a timeline of
+the main stretches of the meeting, highlights (your bookmarks and the times someone mentioned you, with the words said
+at that moment), who spoke how much (only when more than one speaker is known), and a ready-to-send **follow-up email**
+(copy, open in your email app, or send via WhatsApp). The full transcript sits at the end, one paragraph per speaker turn,
+with an English line only where the original was in another language; on the page it is folded away and opens when you
+search it. Empty sections never appear.
 
 - **Ask this meeting.** A box on the report page answers questions such as "What did we decide about pricing?" using
   only that meeting's transcript, with timestamps. It uses your own Gemini key, so it works on the local report page
   (not on shared cloud links).
-- Export as DOCX, PDF or Markdown from the top bar.
+- Export as DOCX, PDF or Markdown from the top bar. The Word file has the same layout as the page.
 
 ## Using Ink on another laptop (no code needed)
 
