@@ -226,3 +226,35 @@ def test_two_inks_never_share_a_port():
             localserver._Server(("127.0.0.1", port), localserver._Handler).server_close()
     finally:
         a.server_close()
+
+
+# ---- who is speaking --------------------------------------------------------------------------------------
+from inkwake.speakers import SpeakerWatcher  # noqa: E402
+
+
+def _watcher(participants, me="Dhanush M"):
+    w = SpeakerWatcher(None, config.Settings(name=me), lambda: True, lambda m: None)
+    w.participants = set(participants)
+    return w
+
+
+def test_one_other_person_on_screen_gets_the_unattributed_words():
+    assert _watcher(["Paul D", "Dhanush M"]).name_at(time.monotonic()) == "Paul D"
+    assert _watcher(["Paul D", "You"]).name_at(time.monotonic()) == "Paul D"
+
+
+def test_two_or_more_others_stay_unknown_until_the_highlight_is_read():
+    assert _watcher(["Paul D", "Kannan Rangasamy", "Dhanush M"]).name_at(time.monotonic()) is None
+
+
+def test_a_read_highlight_wins_over_the_fallback():
+    w = _watcher(["Paul D", "Kannan Rangasamy", "Dhanush M"])
+    w._append(time.monotonic() - 1, "Kannan Rangasamy")
+    assert w.name_at(time.monotonic()) == "Kannan Rangasamy"
+
+
+def test_ink_windows_are_excluded_from_screenshots_on_windows(monkeypatch):
+    from inkwake.ui import capture
+    calls = []
+    monkeypatch.setattr(capture.sys, "platform", "linux")
+    assert capture.hide_from_screen_capture(object()) is False  # harmless elsewhere

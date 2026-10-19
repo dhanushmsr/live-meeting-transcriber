@@ -16,6 +16,7 @@ from typing import Callable
 from google import genai
 from google.genai import types
 
+REQUEST_TIMEOUT_MS = 20_000  # never let one slow call block the others
 INTERVAL = 2.0     # seconds between screenshots while remote audio is active
 MAX_INFLIGHT = 3   # vision calls can take 3-5 s; overlap them
 VALID_FOR = 8.0    # an observation still counts this long (a speaker rarely changes faster)
@@ -24,7 +25,9 @@ WIDTH = 1280
 PROMPT = (
     "This is a screenshot of a video meeting (Google Meet, Zoom, Microsoft Teams, WhatsApp, ...). "
     "Find the participant who is speaking right now: the tile with the active-speaker highlight "
-    "(coloured or glowing border, animated sound-bar icon) or the spotlighted speaker. "
+    "(a coloured or glowing border, an animated sound-wave / three-dot microphone icon on the tile, or the "
+    "spotlighted / enlarged speaker). Other participants' tiles are plain or show a muted-microphone icon. "
+    "Ignore any captions text drawn over the video. "
     'Return JSON only: {"speaker": "<name exactly as written on that tile, or empty>", '
     '"me": <true if that tile is the local user (labelled You / self view)>, '
     '"participants": [<every participant name visible>]}. '
@@ -36,7 +39,7 @@ def grab_jpeg() -> bytes:
     import mss
     from PIL import Image
 
-    with mss.mss() as sct:
+    with (getattr(mss, "MSS", None) or mss.mss)() as sct:  # mss 10 renamed mss.mss to mss.MSS
         shot = sct.grab(sct.monitors[1])  # primary monitor
         img = Image.frombytes("RGB", shot.size, shot.rgb)
     if img.width > WIDTH:
@@ -50,7 +53,8 @@ def ask(client: genai.Client, model: str, jpeg: bytes) -> dict:
     r = client.models.generate_content(
         model=model,
         contents=[types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"), PROMPT],
-        config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0),
+        config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0,
+                                           http_options=types.HttpOptions(timeout=REQUEST_TIMEOUT_MS)),
     )
     data = json.loads(r.text)
     return data if isinstance(data, dict) else {}
@@ -78,7 +82,14 @@ class SpeakerWatcher:
                 break
         if best and t - best[0] <= VALID_FOR:
             return best[1]
-        return None
+        return self.sole_remote()
+
+    def sole_remote(self) -> str | None:
+        """If the screen shows exactly one other person, everything said by 'Others' is theirs even when the speaking
+        highlight can't be read."""
+        me = {"you", "me", (getattr(self.settings, "name", "") or "").strip().lower()} - {""}
+        others = [n for n in self.participants if n.lower() not in me and not any(m in n.lower() for m in me if len(m) > 3)]
+        return others[0] if len(others) == 1 else None
 
     def name_near(self, t: float, window: float = 6.0) -> str | None:
         """Closest named observation within `window` seconds of t, before or after (used to back-fill early lines)."""

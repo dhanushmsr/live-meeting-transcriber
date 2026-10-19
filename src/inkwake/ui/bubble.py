@@ -8,6 +8,7 @@ from PySide6.QtCore import QEasingCurve, QPointF, QRectF, Qt, QTimer, QVariantAn
 from PySide6.QtGui import QBrush, QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QToolTip, QWidget
 
+from .capture import hide_from_screen_capture
 from .icons import COLORS, draw_icon
 
 LOGO = Path(__file__).parent.parent / "assets" / "ink.png"
@@ -76,6 +77,10 @@ class Bubble(QWidget):
         self.timer.setInterval(50)
         self.timer.timeout.connect(self._tick)
         self.timer.start()
+
+    def showEvent(self, event) -> None:
+        hide_from_screen_capture(self)
+        super().showEvent(event)
 
     # ---- state ---------------------------------------------------------
     def set_state(self, state: str) -> None:

@@ -6,6 +6,7 @@ from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
+from .capture import hide_from_screen_capture
 from .icons import IconButton
 
 STYLE = """
@@ -91,6 +92,10 @@ class NotesPanel(QWidget):
         scroll.setWidget(self.body)
         lay.addWidget(scroll)
         self._drag: QPoint | None = None
+
+    def showEvent(self, event) -> None:
+        hide_from_screen_capture(self)
+        super().showEvent(event)
 
     def set_notes(self, d: dict) -> None:
         if d.get("updating"):

@@ -4,6 +4,8 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from .capture import hide_from_screen_capture
+
 
 class CaptionBar(QWidget):
     def __init__(self) -> None:
@@ -26,6 +28,10 @@ class CaptionBar(QWidget):
         self.hide_timer = QTimer(self)
         self.hide_timer.setSingleShot(True)
         self.hide_timer.timeout.connect(self.hide)
+
+    def showEvent(self, event) -> None:
+        hide_from_screen_capture(self)
+        super().showEvent(event)
 
     @staticmethod
     def _fmt(speaker: str, text: str) -> str:
