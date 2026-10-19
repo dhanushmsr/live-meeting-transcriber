@@ -9,6 +9,8 @@ Cloudflare Worker in cloud/, so a report looks and exports identically in both p
 import json
 import re
 import secrets
+import socket
+import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -29,6 +31,18 @@ HEADERS = {
     "X-Robots-Tag": "noindex, nofollow, noarchive",
     "Cache-Control": "private, no-store",
 }
+
+class _Server(ThreadingHTTPServer):
+    """Refuses a port another program already holds. By default Windows lets two sockets share a port, so a second
+    Ink (or any other app) would silently steal requests and report links would open the wrong server."""
+
+    allow_reuse_address = False
+
+    def server_bind(self) -> None:
+        if sys.platform == "win32":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
 
 _lock = threading.Lock()
 _server: ThreadingHTTPServer | None = None
@@ -155,7 +169,7 @@ def ensure_started() -> int:
         purge_expired()
         for port in range(FIRST_PORT, FIRST_PORT + 10):
             try:
-                srv = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
+                srv = _Server(("127.0.0.1", port), _Handler)
             except OSError:
                 continue
             threading.Thread(target=srv.serve_forever, daemon=True).start()

@@ -26,6 +26,7 @@ PREROLL = 0.4         # audio kept from just before speech starts
 IDLE_FINALIZE = 1.6   # no new words for this long -> the caption line is complete
 MAX_LINE = 280        # characters; split very long run-on speech into several lines
 DRAIN_EVERY = 0.1
+DEAD_MIC_SECONDS = 8.0  # this long of pure silence from the microphone -> warn the user
 TALK_SETTLE = 7.0     # wait this long for the screen reading before assigning talk time to a name
 SPEECH_LAG = 1.6      # seconds between someone speaking and their words coming back
 
@@ -42,6 +43,9 @@ class LiveStream:
         self.last_speech = 0.0                 # monotonic time of the last audible speech
         self._speaker = label                  # speaker of the line being built (sticky)
         self._line_mono = 0.0
+        self._floor = 0.002                    # running estimate of the room noise level (RMS)
+        self._dead_secs = 0.0                  # how long the microphone has delivered digital silence
+        self._mic_warned = False
         self._talk_pending: deque = deque()    # (monotonic time, minute) waiting for a name
         self.offset = 0.0                      # seconds of (unpaused) audio captured so far
         self._q: asyncio.Queue = asyncio.Queue(maxsize=600)
@@ -121,7 +125,12 @@ class LiveStream:
         if len(data) == 0:
             return
         secs = len(data) / audio.SR
-        act = audio.activity(data)
+        rms = audio.frame_rms(data)
+        # Learn how noisy the room is (the quiet 20% of frames) and require speech to stand clearly above it.
+        if len(rms):
+            self._floor = 0.97 * self._floor + 0.03 * float(np.percentile(rms, 20))
+        act = rms > audio.speech_threshold(self._floor)
+        self._watch_microphone(rms, secs)
         if act.any():
             self.last_speech = time.monotonic()
         now = time.monotonic()
@@ -145,6 +154,21 @@ class LiveStream:
             self._pre.append(pcm)
             while len(self._pre) * DRAIN_EVERY > PREROLL:
                 self._pre.popleft()
+
+    def _watch_microphone(self, rms: np.ndarray, secs: float) -> None:
+        """Tell the user when their microphone delivers pure silence (hardware mute key, blocked, wrong device)."""
+        if self.label != "You" or self._mic_warned or not len(rms):
+            return
+        if float(rms.max()) < audio.DEAD_RMS:
+            self._dead_secs += secs
+            if self._dead_secs >= DEAD_MIC_SECONDS:
+                self._mic_warned = True
+                self.on_notice(
+                    "Ink can't hear your microphone (it is sending silence). Check the laptop's mic-mute key, "
+                    "Windows Settings > Privacy > Microphone, other apps using the mic, or pick another microphone "
+                    "in Ink's Settings.")
+        else:
+            self._dead_secs = 0.0
 
     def _put_nowait(self, item) -> None:
         if self._q.full():  # reconnecting for a long time: drop the oldest audio

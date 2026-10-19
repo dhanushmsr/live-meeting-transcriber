@@ -26,14 +26,29 @@ def to_16k_mono(data: np.ndarray, rate: int) -> np.ndarray:
     return np.interp(np.linspace(0, len(data) - 1, n_out), np.arange(len(data)), data).astype(np.float32)
 
 
-def activity(audio: np.ndarray) -> np.ndarray:
-    """Boolean array, one entry per FRAME seconds: True where someone is speaking."""
+MIN_SPEECH_RMS = 0.004   # quietest level we ever treat as speech (laptop mics are often quiet)
+MAX_SPEECH_RMS = 0.02    # ...and the loudest threshold we allow in a noisy room
+DEAD_RMS = 0.0003        # below this a microphone is delivering digital silence: muted, blocked or disconnected
+
+
+def frame_rms(audio: np.ndarray) -> np.ndarray:
+    """RMS level of each FRAME-second slice."""
     n = int(SR * FRAME)
     frames = len(audio) // n
     if frames == 0:
-        return np.zeros(0, dtype=bool)
+        return np.zeros(0, dtype=np.float32)
     x = audio[: frames * n].reshape(frames, n)
-    return np.sqrt((x ** 2).mean(axis=1)) > SPEECH_RMS
+    return np.sqrt((x ** 2).mean(axis=1))
+
+
+def speech_threshold(noise_floor: float) -> float:
+    """Speech must be clearly above the room's own noise: 3x the floor, kept within sensible limits."""
+    return float(min(MAX_SPEECH_RMS, max(MIN_SPEECH_RMS, 3.0 * noise_floor)))
+
+
+def activity(audio: np.ndarray, threshold: float = SPEECH_RMS) -> np.ndarray:
+    """Boolean array, one entry per FRAME seconds: True where someone is speaking."""
+    return frame_rms(audio) > threshold
 
 
 def to_wav(audio: np.ndarray) -> bytes:
@@ -144,5 +159,36 @@ def open_system_audio() -> Capture:
     )
 
 
-def open_microphone() -> Capture:
-    return SoundDeviceCapture()
+def list_microphones() -> list[str]:
+    """Names of the microphones Windows/macOS offers (one entry per physical device)."""
+    try:
+        import sounddevice as sd
+
+        api = sd.query_hostapis(sd.default.hostapi)["name"]
+        names = []
+        for d in sd.query_devices():
+            if d["max_input_channels"] > 0 and sd.query_hostapis(d["hostapi"])["name"] == api:
+                if d["name"] not in names and "mapper" not in d["name"].lower() and "primary" not in d["name"].lower():
+                    names.append(d["name"])
+        return names
+    except Exception:
+        return []
+
+
+def find_microphone(name: str, devices=None) -> int | None:
+    """Index of the first input device whose name contains `name` (case-insensitive), or None for the default."""
+    if not name:
+        return None
+    if devices is None:
+        import sounddevice as sd
+
+        devices = sd.query_devices()
+    wanted = name.lower()
+    for i, d in enumerate(devices):
+        if d["max_input_channels"] > 0 and wanted in d["name"].lower():
+            return i
+    return None
+
+
+def open_microphone(name: str = "") -> Capture:
+    return SoundDeviceCapture(find_microphone(name))

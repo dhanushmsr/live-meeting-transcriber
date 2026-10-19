@@ -52,7 +52,7 @@ class Session(QObject):
         self.title = title  # empty when the meeting name is unknown -> report is named by date/time only
         self.started_at = datetime.now()
         try:
-            self.captures["You"] = audio.open_microphone()
+            self.captures["You"] = audio.open_microphone(self.settings.mic_device)
         except Exception as e:
             self.failed.emit(f"Microphone unavailable: {e}")
             return

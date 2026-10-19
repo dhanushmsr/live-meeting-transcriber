@@ -88,6 +88,20 @@ you were mentioned), topics, key points, decisions, action items, open questions
 
 To just **read a report** on another device, open its link in a browser. Nothing needs to be installed.
 
+## Troubleshooting
+
+- **`uvx` or `inkwake` is "not recognized".** Install uv (see above), then **close and reopen the terminal**. Prefer `uvx`
+  over `pip`: with the Microsoft Store version of Python, `pip install` can fail with "No such file or directory ...
+  Windows Long Path support", and then the `inkwake` command is never created. (You can instead enable long paths, see
+  <https://pip.pypa.io/warnings/enable-long-paths>.)
+- **"Ink can't hear your microphone".** Ink noticed your microphone is sending pure silence. Check, in this order:
+  the laptop's **mic-mute key** (often F4 or Fn+F4, which Windows does not show as muted), Windows Settings > System >
+  Sound > Input (speak and watch the level bar move), Settings > Privacy & security > Microphone (allow desktop apps),
+  other apps holding the microphone (Zoom, Teams, browser tabs), and then try another microphone in Ink's Settings.
+- **Captions never appear but nothing is wrong on screen.** Ink only sends audio while someone is speaking above the
+  room's noise level. If your voice is very quiet, raise the microphone level in Windows Sound settings.
+- **A report link opens the wrong page.** Close every old Ink window and start Ink once; each Ink now uses its own port.
+
 ## How audio is captured
 
 - Your microphone is "You".

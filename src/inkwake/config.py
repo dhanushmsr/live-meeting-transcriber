@@ -50,6 +50,7 @@ class Settings:
     version: int = 2
     target_language: str = "English"
     auto_detect: bool = True
+    mic_device: str = ""     # part of a microphone name; empty = the system default
     read_names: bool = True  # read participant names from the meeting screen
     bubble_x: int = -1
     bubble_y: int = -1

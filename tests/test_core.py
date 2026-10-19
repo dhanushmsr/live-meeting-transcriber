@@ -157,3 +157,72 @@ def test_environment_override_is_not_persisted(home, monkeypatch):
     assert s.env_share and s.share_online is False
     s.save()
     assert json.loads((home / "config.json").read_text())["share_online"] is False
+
+
+# ---- microphone handling -------------------------------------------------------------------------------------
+import numpy as np  # noqa: E402
+
+from inkwake import audio  # noqa: E402
+
+
+def _tone(level, secs=1.0):
+    t = np.arange(int(audio.SR * secs)) / audio.SR
+    return (level * np.sqrt(2) * np.sin(2 * np.pi * 220 * t)).astype("float32")  # RMS == level
+
+
+def test_quiet_laptop_mic_still_counts_as_speech():
+    quiet_speech = _tone(0.006)  # a typical laptop mic: below the old fixed 0.012 threshold
+    assert not audio.activity(quiet_speech).any()                                   # old behaviour missed it
+    assert audio.activity(quiet_speech, audio.speech_threshold(0.0002)).all()       # adaptive threshold hears it
+
+
+def test_threshold_rises_in_a_noisy_room_but_stays_bounded():
+    assert audio.speech_threshold(0.0) == audio.MIN_SPEECH_RMS
+    assert audio.speech_threshold(0.005) == pytest.approx(0.015)
+    assert audio.speech_threshold(0.5) == audio.MAX_SPEECH_RMS
+
+
+def test_dead_microphone_triggers_a_warning_once():
+    from inkwake.live import DEAD_MIC_SECONDS, LiveStream
+    notes = []
+    st = LiveStream("You", None, None, config.Settings(), lambda *a: None, lambda *a: None, lambda *a: None, notes.append)
+    for _ in range(int(DEAD_MIC_SECONDS / 0.1) + 5):
+        st._take(np.zeros(int(audio.SR * 0.1), dtype="float32"))
+    assert len(notes) == 1 and "can't hear your microphone" in notes[0]
+
+
+def test_working_microphone_never_warns():
+    from inkwake.live import LiveStream
+    notes = []
+    st = LiveStream("You", None, None, config.Settings(), lambda *a: None, lambda *a: None, lambda *a: None, notes.append)
+    for _ in range(150):
+        st._take(_tone(0.02, 0.1))
+    assert notes == []
+
+
+def test_the_other_side_of_the_call_is_not_flagged_as_a_dead_mic():
+    from inkwake.live import LiveStream
+    notes = []
+    st = LiveStream("Others", None, None, config.Settings(), lambda *a: None, lambda *a: None, lambda *a: None, notes.append)
+    for _ in range(150):
+        st._take(np.zeros(int(audio.SR * 0.1), dtype="float32"))  # nobody talking is normal
+    assert notes == []
+
+
+def test_find_microphone_by_name():
+    devices = [{"name": "Speakers", "max_input_channels": 0}, {"name": "Microphone Array (Intel)", "max_input_channels": 4},
+               {"name": "USB Headset Mic", "max_input_channels": 1}]
+    assert audio.find_microphone("headset", devices) == 2
+    assert audio.find_microphone("", devices) is None
+    assert audio.find_microphone("does not exist", devices) is None
+
+
+def test_two_inks_never_share_a_port():
+    """A second server must refuse a port that is taken, so links never reach the wrong Ink."""
+    a = localserver._Server(("127.0.0.1", 0), localserver._Handler)
+    try:
+        port = a.server_address[1]
+        with pytest.raises(OSError):
+            localserver._Server(("127.0.0.1", port), localserver._Handler).server_close()
+    finally:
+        a.server_close()

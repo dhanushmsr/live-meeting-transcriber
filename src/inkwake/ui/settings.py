@@ -3,6 +3,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QComboBox, QDialog, QHBoxLayout, QLineEdit, QMessageBox, QVBoxLayout
 
+from .. import audio
 from ..config import DEFAULT_CLOUD_URL, LANGUAGES, Settings
 from .icons import IconButton
 
@@ -38,6 +39,14 @@ class SettingsDialog(QDialog):
         self.lang.setCurrentText(settings.target_language)
         self.lang.setToolTip("Translate into this language")
 
+        self.mic = QComboBox()
+        self.mic.addItem("System default microphone", "")
+        for name in audio.list_microphones():
+            self.mic.addItem(name, name)
+        i = self.mic.findData(settings.mic_device)
+        self.mic.setCurrentIndex(max(i, 0))
+        self.mic.setToolTip("Which microphone Ink listens to")
+
         self.cloud_url = QLineEdit(settings.cloud_report_url)
         self.cloud_url.setPlaceholderText("Cloud Report Server URL (optional, e.g. Cloudflare Worker)")
         self.cloud_url.setToolTip("URL of your 72h Cloudflare Worker report server")
@@ -66,6 +75,7 @@ class SettingsDialog(QDialog):
             fields.append(self.cloud_url)
         for w in fields:
             lay.addWidget(w)
+        lay.addWidget(self.mic)
         toggles = QHBoxLayout()
         toggles.addWidget(self.cc)
         toggles.addWidget(self.tr)
@@ -101,6 +111,7 @@ class SettingsDialog(QDialog):
             s.cloud_report_url = self.cloud_url.text().strip()
         s.captions, s.translate, s.auto_detect = self.cc.isChecked(), self.tr.isChecked(), self.auto.isChecked()
         s.read_names = self.names.isChecked()
+        s.mic_device = self.mic.currentData() or ""
         if self.share.isChecked() and not s.share_online and not self._confirm_share():
             self.share.setChecked(False)
         s.share_online = self.share.isChecked()
