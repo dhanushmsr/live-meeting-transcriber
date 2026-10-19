@@ -55,7 +55,7 @@ class SettingsDialog(QDialog):
         self.cc.setChecked(settings.captions)
         self.tr = IconButton("translate", "Show captions in the selected language (translate)", checkable=True)
         self.tr.setChecked(settings.translate)
-        self.names = IconButton("people", "Read participant names from the meeting screen", checkable=True)
+        self.names = IconButton("people", "Name who is speaking (reads names from the meeting screen, and separates voices after the meeting)", checkable=True)
         self.names.setChecked(settings.read_names)
         self.share = IconButton("share", "Share reports online (uploads each finished report to Ink's report server, link works for 72 hours)", checkable=True)
         self.share.setChecked(settings.share_online)

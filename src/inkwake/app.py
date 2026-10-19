@@ -4,6 +4,7 @@ import os
 import signal
 import subprocess
 import sys
+import webbrowser
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QAction, QGuiApplication, QIcon
@@ -11,23 +12,13 @@ from PySide6.QtWidgets import QApplication, QDialog, QHBoxLayout, QLabel, QMenu,
 
 from . import detector, localserver
 from .gemini import Gemini, stamp
-from .config import Settings, reports_dir
+from .config import Settings, cleanup_tmp, reports_dir
 from .session import Session
 from .ui.bubble import Bubble, logo_pixmap
 from .ui.captions import CaptionBar
 from .ui.icons import IconButton
 from .ui.notes import NotesPanel
 from .ui.settings import SettingsDialog
-
-
-def _reveal(path) -> None:
-    """Show the saved report in the file manager."""
-    if sys.platform == "win32":
-        subprocess.Popen(["explorer", f"/select,{path}"])
-    elif sys.platform == "darwin":
-        subprocess.Popen(["open", "-R", str(path)])
-    else:
-        _open(os.path.dirname(path))
 
 
 def _open(path) -> None:
@@ -45,10 +36,10 @@ class InkApp:
         self.qt.setQuitOnLastWindowClosed(False)
         self.qt.setApplicationName("Ink")
         self.settings = Settings.load()
+        cleanup_tmp()
         self.session: Session | None = None
         self._prompted: str | None = None
         self._last_report: str | None = None
-        self._cloud_opened = False
 
         self.bubble = Bubble()
         self.bubble.action.connect(self.on_action)
@@ -155,7 +146,6 @@ class InkApp:
         self.session.notice.connect(self._notify)
         self.session.failed.connect(self._on_failed)
         self.session.finished.connect(self._on_finished)
-        self.session.cloud_link_ready.connect(self._on_cloud_link)
         self.session.notes_ready.connect(self.notes_panel.set_notes)
         self.session.bookmarked.connect(self._on_bookmark)
         self.session.mention.connect(self._on_mention)
@@ -177,15 +167,18 @@ class InkApp:
         self._notify(msg)
         self.bubble.set_state("idle")
 
-    def _on_finished(self, path: str) -> None:
+    def _on_finished(self, path: str, link: str) -> None:
+        """The meeting is over and the report is written: open it in the browser. The folder is never opened."""
         self._last_report = path
         folder = f"Desktop/{os.path.basename(os.path.dirname(path))}"
-        if self._cloud_opened:  # the online report is already on screen; the .docx is just a backup copy
-            self._cloud_opened = False
-            self._notify(f"Online report opened and link copied. Backup saved in {folder}.")
-        else:
-            _reveal(path)
-            self._notify(f"Report saved to {folder}: {os.path.basename(path)}")
+        if link:
+            webbrowser.open(link)
+            clipboard = QGuiApplication.clipboard()
+            if clipboard:
+                clipboard.setText(link)
+            self._notify(f"Your report is open in the browser and the link is copied. A .docx copy is in {folder}.")
+        else:  # could not make an online report: say so, open nothing, let the notification open the file on click
+            self._notify(f"Report saved: {folder}/{os.path.basename(path)} (click to open). The online report could not be made.")
 
     def _answer(self, record: dict, question: str) -> str:
         """Answer a question about one saved meeting (called by the local report server)."""
@@ -204,12 +197,6 @@ class InkApp:
         self.qt.beep()
         self.bubble.flash("#a78bfa", 3.0)
         self._notify(f"{speaker} mentioned you: {line[:120]}")
-
-    def _on_cloud_link(self, url: str) -> None:
-        import webbrowser
-        webbrowser.open(url)
-        QGuiApplication.clipboard().setText(url)
-        self._cloud_opened = True
 
     # ---- meeting detection & consent -----------------------------------
     def _poll(self) -> None:

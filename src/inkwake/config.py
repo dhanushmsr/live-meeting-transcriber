@@ -102,3 +102,15 @@ def history_totals() -> tuple[int, float]:
     """(number of past meetings, total minutes)."""
     h = load_history()
     return len(h), sum(float(m.get("minutes", 0)) for m in h)
+
+
+def cleanup_tmp(max_age_hours: float = 24.0) -> None:
+    """Delete leftover temporary recordings (a crash can leave one); they are other people's voices."""
+    import time
+
+    try:
+        for f in (HOME / "tmp").glob("*.wav"):
+            if time.time() - f.stat().st_mtime > max_age_hours * 3600:
+                f.unlink()
+    except OSError:
+        pass

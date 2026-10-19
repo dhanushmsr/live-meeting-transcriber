@@ -9,6 +9,8 @@ as they are recognised. The caption shows the translation when "translate" is on
 
 import asyncio
 import time
+import wave
+from pathlib import Path
 from collections import deque
 from typing import Callable
 
@@ -36,13 +38,14 @@ class LiveStream:
 
     def __init__(self, label: str, capture: audio.Capture, client: genai.Client, settings,
                  on_partial: Callable, on_segment: Callable, on_talk: Callable, on_notice: Callable,
-                 speaker_fn: Callable[[float], str | None] | None = None) -> None:
+                 speaker_fn: Callable[[float], str | None] | None = None, record_to: Path | None = None) -> None:
         self.label, self.cap, self.client, self.settings = label, capture, client, settings
         self.on_partial, self.on_segment, self.on_talk, self.on_notice = on_partial, on_segment, on_talk, on_notice
         self.speaker_fn = speaker_fn           # monotonic time -> remote speaker name (None if unknown)
         self.last_speech = 0.0                 # monotonic time of the last audible speech
         self._speaker = label                  # speaker of the line being built (sticky)
         self._line_mono = 0.0
+        self._line_end = 0.0                   # stream time (s) of the last words in the line being built
         self._floor = 0.002                    # running estimate of the room noise level (RMS)
         self._dead_secs = 0.0                  # how long the microphone has delivered digital silence
         self._mic_warned = False
@@ -55,7 +58,17 @@ class LiveStream:
         self._last_frag = 0.0
         self._hang = 0.0
         self._pre: deque = deque()
-        self._failed_once = False
+        self._fail_count = 0                   # consecutive connection failures (a few are normal and invisible)
+        self._goaway: asyncio.Event | None = None
+        # Optional: keep every sample on disk (16 kHz mono WAV) so the speakers can be told apart after the meeting.
+        self.record_path = record_to
+        self._rec = None
+        if record_to:
+            record_to.parent.mkdir(parents=True, exist_ok=True)
+            self._rec = wave.open(str(record_to), "wb")
+            self._rec.setnchannels(1)
+            self._rec.setsampwidth(2)
+            self._rec.setframerate(audio.SR)
 
     # ---- lifecycle -----------------------------------------------------
     def stop(self) -> None:
@@ -63,22 +76,28 @@ class LiveStream:
 
     async def run(self) -> None:
         tasks = [asyncio.create_task(self._drain()), asyncio.create_task(self._idle())]
+        self._goaway = asyncio.Event()
         self._ended = False
         stop_tries = 0
-        while not self._ended:
-            try:
-                await self._connection()
-            except Exception as e:  # network blip, session time limit, model hiccup: reconnect
-                if self._stopping:  # meeting already over: don't loop forever
-                    stop_tries += 1
-                    if stop_tries >= 2:
-                        break
-                if not self._failed_once:
-                    self._failed_once = True
-                    self.on_notice(f"Live connection issue ({self.label}): {str(e)[:140]}. Reconnecting...")
-                await asyncio.sleep(1.0)
-        tasks[1].cancel()
-        self._finalize_line()
+        try:
+            while not self._ended:
+                try:
+                    await self._connection()
+                except Exception as e:  # network blip, model hiccup: reconnect
+                    if self._stopping:  # meeting already over: don't loop forever
+                        stop_tries += 1
+                        if stop_tries >= 2:
+                            break
+                    self._fail_count += 1
+                    if self._fail_count == 3:  # one or two quick retries are normal; only speak up when it keeps failing
+                        self.on_notice(f"Live captions keep disconnecting ({self.label}): {str(e)[:120]}. Still retrying...")
+                    await asyncio.sleep(min(1.0 * self._fail_count, 5.0))
+        finally:
+            tasks[1].cancel()
+            self._finalize_line()
+            if self._rec:
+                self._rec.close()
+                self._rec = None
 
     # ---- settings -> session config -----------------------------------
     def _mode(self) -> str:
@@ -96,7 +115,9 @@ class LiveStream:
     async def _connection(self) -> None:
         mode = self._mode()
         model, cfg = self._config(mode)
+        self._goaway.clear()
         async with self.client.aio.live.connect(model=model, config=cfg) as sess:
+            self._fail_count = 0
             send = asyncio.create_task(self._send(sess, mode))
             recv = asyncio.create_task(self._recv(sess))
             done, pending = await asyncio.wait({send, recv}, return_when=asyncio.FIRST_COMPLETED)
@@ -142,6 +163,8 @@ class LiveStream:
                 self.on_talk(self.label, minute, audio.FRAME)
         self.offset += secs
         pcm = (np.clip(data, -1, 1) * 32767).astype("<i2").tobytes()
+        if self._rec:  # every sample, silence included, so timestamps match the transcript
+            self._rec.writeframes(pcm)
         if act.any():
             self._hang = HANGOVER
             while self._pre:
@@ -197,6 +220,9 @@ class LiveStream:
     async def _recv(self, sess) -> None:
         while True:
             async for m in sess.receive():
+                if getattr(m, "go_away", None):  # the server's session time limit is near: reconnect cleanly, silently
+                    self._goaway.set()
+                    return
                 sc = m.server_content
                 if not sc:
                     continue
@@ -219,6 +245,7 @@ class LiveStream:
         else:
             self._out += text
         self._last_frag = time.monotonic()
+        self._line_end = max(self._line_t, self.offset - SPEECH_LAG)
         shown = (self._out if self.settings.translate else self._src).strip()
         if shown:
             self.on_partial(self._speaker, shown)
@@ -236,4 +263,4 @@ class LiveStream:
         self._src = self._out = ""
         if not (src or out):
             return
-        self.on_segment(self._speaker, self._line_t, src, out, self._line_mono)
+        self.on_segment(self._speaker, self._line_t, src, out, self._line_mono, self.label, self._line_end)

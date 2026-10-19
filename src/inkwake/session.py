@@ -10,7 +10,7 @@ from datetime import datetime
 from google import genai
 from PySide6.QtCore import QObject, Signal
 
-from . import audio, config, report
+from . import audio, config, diarize, report
 from .gemini import Gemini, stamp
 from .live import LiveStream
 from .speakers import SpeakerWatcher
@@ -19,8 +19,7 @@ from .speakers import SpeakerWatcher
 class Session(QObject):
     caption = Signal(str, str, bool)  # speaker, text so far, is_final
     state_changed = Signal(str)       # recording | paused | processing | idle
-    finished = Signal(str)            # report path
-    cloud_link_ready = Signal(str)    # link to the online report
+    finished = Signal(str, str)       # report file path, link to the online report ("" if there is none)
     notes_ready = Signal(dict)        # live catch-up notes (gist, decisions, action items, ...)
     mention = Signal(str, str)        # speaker, line: someone said the user's name
     bookmarked = Signal(float)        # meeting time (s) of a bookmark
@@ -42,6 +41,7 @@ class Session(QObject):
         self.participants: set[str] = set()
         self.bookmarks: list[dict] = []
         self.notes: dict = {}
+        self._others_stream: LiveStream | None = None
         self._notes_lines = 0                 # transcript lines already covered by self.notes
         self._notes_lock = threading.Lock()
         self._done = False
@@ -114,8 +114,13 @@ class Session(QObject):
         self.streams = []
         for label, cap in self.captures.items():
             fn = watcher.name_at if (watcher and label == "Others") else None
+            record = None
+            if label == "Others" and self.settings.read_names:  # kept only until the report is written, then deleted
+                record = config.HOME / "tmp" / f"others-{self.started_at:%Y%m%d-%H%M%S}.wav"
             st = LiveStream(label, cap, client, self.settings, self._partial, self._segment, self._talk,
-                            self.notice.emit, speaker_fn=fn)
+                            self.notice.emit, speaker_fn=fn, record_to=record)
+            if label == "Others":
+                self._others_stream = st
             if label == "Others" and watcher:
                 others.append(st)
             self.streams.append(st)
@@ -138,9 +143,11 @@ class Session(QObject):
     def _partial(self, speaker: str, text: str) -> None:
         self.caption.emit(self._name(speaker), text, False)
 
-    def _segment(self, speaker: str, t: float, src: str, out: str, mono: float = 0.0) -> None:
+    def _segment(self, speaker: str, t: float, src: str, out: str, mono: float = 0.0, channel: str = "",
+                 t_end: float = 0.0) -> None:
         speaker = self._name(speaker)
-        line = {"t": t, "speaker": speaker, "text": src, "translation": out, "mono": mono}
+        line = {"t": t, "t_end": t_end, "speaker": speaker, "text": src, "translation": out, "mono": mono,
+                "channel": channel}
         shown = (out if self.settings.translate else src) or src or out
         if self._mentions_me(speaker, f"{src} {out}"):
             line["mention"] = True
@@ -219,6 +226,7 @@ class Session(QObject):
             for x in self.transcript:
                 if x["speaker"] == "Others":
                     x["speaker"] = self.watcher.name_near(x["mono"]) or "Others"
+        self._separate_speakers()
         self.transcript.sort(key=lambda x: x["t"])
         self.bookmarks = report.bookmark_context(self.bookmarks, self.transcript)  # why each bookmarked moment mattered
         text = "\n".join(
@@ -254,9 +262,42 @@ class Session(QObject):
             transcript=self.transcript, talk=self.talk, analysis=analysis,
             participants=sorted(self.participants), languages=sorted(self.languages), bookmarks=self.bookmarks,
         )
-        if link:
-            self.cloud_link_ready.emit(link)
-        self.finished.emit(str(path))
+        self.finished.emit(str(path), link or "")  # one signal carries both, so the app can never act on half of it
+
+    # ---- who said what ----------------------------------------------------
+    def _separate_speakers(self) -> None:
+        """Listen to the recording of the other side and name each voice (best effort; never blocks the report)."""
+        st = self._others_stream
+        path = getattr(st, "record_path", None)
+        if not path:
+            return
+        try:
+            if not path.exists() or not any(x.get("channel") == "Others" for x in self.transcript):
+                return
+            mb = path.stat().st_size / 1e6
+            secs = st.offset
+            if secs < diarize.MIN_RECORDING_SECONDS:
+                return
+            if mb > diarize.MAX_RECORDING_MB:
+                self.notice.emit("This meeting was too long to separate speakers afterwards; names come from the screen.")
+                return
+            self.notice.emit("Working out who said what...")
+            s = self.settings
+            turns = Gemini(s.api_key, s.report_model, s.fallback_model).diarize(str(path), sorted(self.participants))
+            own = {"You", self._name("You")}
+            before = {x["speaker"] for x in self.transcript if x.get("channel") == "Others"}
+            self.talk = diarize.apply_turns(self.transcript, turns, self.talk, own, mention_fn=self._mentions_me)
+            after = {x["speaker"] for x in self.transcript if x.get("channel") == "Others"}
+            self.participants |= {n for n in after if n.lower() != "others" and diarize.looks_like_real_name(n)}
+            if after == before:
+                self.notice.emit("Could not tell the voices apart in this recording; labels were left as they were.")
+        except Exception as e:
+            self.notice.emit(f"Could not separate speakers ({str(e)[:100]}); names come from the screen.")
+        finally:
+            try:
+                path.unlink()  # never keep other people's voices on disk longer than needed
+            except OSError:
+                pass
 
     # ---- online report link ---------------------------------------------
     def _payload(self, **data) -> dict:
@@ -271,7 +312,8 @@ class Session(QObject):
             "participants": data.get("participants"),
             "languages": data.get("languages"),
             "bookmarks": data.get("bookmarks") or [],
-            "transcript": [{k: v for k, v in line.items() if k != "mono"} for line in data.get("transcript", [])],
+            "transcript": [{k: line[k] for k in ("t", "speaker", "text", "translation", "mention") if k in line}
+                           for line in data.get("transcript", [])],
             "talk": {spk: dict(mins) for spk, mins in data.get("talk", {}).items()},
         }
 

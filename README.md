@@ -122,7 +122,17 @@ To just **read a report** on another device, open its link in a browser. Nothing
 
 - Tell participants you are transcribing; consent rules vary by country.
 - Audio is streamed live to the Gemini Live API (`gemini-3.5-live-translate-preview`), so words appear about 1.5-2.5 s after they are spoken; only silence is not sent. The report analysis uses `gemini-flash-latest`.
-- Names: audio can not tell remote people apart, so while others speak Ink reads the active-speaker name from the meeting screen (Gemini vision, a small screenshot every ~2 s) and attaches it to the words. Your own speech comes from the microphone. Turn this off with the people icon in settings. On macOS grant Screen Recording permission.
+- **Who said what.** Live captions can only use what the meeting screen shows (Gemini reads the active-speaker name from a small
+  screenshot every ~2 s; Ink's own windows are hidden from those screenshots). The reliable naming happens **after you press
+  stop**: Ink keeps a recording of the *other* participants during the meeting, Gemini listens to it and separates the voices,
+  and the transcript, talk-time chart and action items then use real names (a name is only used when the person says it, e.g.
+  "this is Paul", or is addressed by name and replies; otherwise you get "Speaker 1", "Speaker 2"). A line containing two
+  people is split where the voice changes. Your own words always come from your microphone. Turn all of this off with the
+  people icon in settings. On macOS grant Screen Recording permission.
+- **Privacy of that recording.** It is written to `~/.inkwake/tmp/` while the meeting runs, uploaded to Google's Gemini for
+  the voice separation (the upload is deleted from Google's side straight afterwards), and deleted from your computer as soon as
+  the report is written (leftovers from a crash are removed on the next start). Meetings longer than about 80 minutes skip
+  this step.
 - Meeting detection is heuristic (Zoom process, window titles for Meet/Teams/WhatsApp). Manual start always works.
 - The logo is `src/inkwake/assets/ink.png`.
 

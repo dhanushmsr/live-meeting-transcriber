@@ -1,6 +1,7 @@
 """Gemini API: meeting analysis, live catch-up notes and question answering."""
 
 import json
+import re
 import time
 
 from google import genai
@@ -20,6 +21,25 @@ def _json(text: str):
 
 def stamp(t: float) -> str:
     return f"{int(t // 60):02d}:{int(t % 60):02d}"
+
+
+def _turns_with_names(data) -> list[dict]:
+    """Voices are identified first and named once; every turn of a voice gets that voice's name (or its voice id)."""
+    if isinstance(data, list):  # older/simple shape: already speaker-labelled turns
+        return data
+    if not isinstance(data, dict):
+        return []
+    voices = data.get("voices") if isinstance(data.get("voices"), dict) else {}
+    out = []
+    for t in data.get("turns") or []:
+        if not isinstance(t, dict):
+            continue
+        vid = str(t.get("voice") or t.get("speaker") or "").strip()
+        name = str(voices.get(vid) or "").strip()
+        label = name or (re.sub(r"^voice\s*", "Speaker ", vid, flags=re.I) if re.match(r"voice\s*\d+", vid, re.I) else vid)
+        out.append({"start": t.get("start"), "end": t.get("end"), "speaker": label,
+                    "starts": str(t.get("starts") or "")})
+    return out
 
 
 class Gemini:
@@ -98,6 +118,45 @@ class Gemini:
         )
         data = _json(self._call(prompt, self.fallback_model, True, timeout_ms=30_000, attempts=2))
         return data if isinstance(data, dict) else {}
+
+    # ---- who spoke when (after the meeting) ------------------------------
+    def diarize(self, wav_path: str, names: list[str] | None = None) -> list[dict]:
+        """Listen to the recording of the OTHER participants and list who speaks when (seconds from its start)."""
+        hint = ""
+        if names:
+            hint = (" People seen on the meeting screen (a hint only, never assume a particular one is speaking): "
+                    + ", ".join(names[:12]) + ".")
+        prompt = (
+            "This is the recording of the OTHER people in an online meeting; the person who recorded it is not in "
+            "this audio. Work out who speaks when. Do it in two steps. STEP 1: tell the different VOICES apart and "
+            'call them "voice 1", "voice 2", ... giving each voice the same id for the whole recording. STEP 2: for '
+            "each voice, give a real name ONLY if that voice itself says its name ('I'm Paul', 'this is Anita') or it "
+            "is addressed by name and THEN replies (the name belongs to the person who replies, never to the person "
+            "who is speaking to them; 'Paul, can you...' is spoken BY someone who is not Paul). Otherwise leave the "
+            "name empty. Never guess. Return JSON only: "
+            '{"voices": {"voice 1": "<real name or empty>", "voice 2": "<real name or empty>"}, '
+            '"turns": [{"start": <seconds>, "end": <seconds>, "voice": "voice 1", '
+            '"starts": "<the first 4-6 words of that turn, exactly as spoken>"}]}. '
+            "List every stretch of speech in order, merging one voice's consecutive sentences into a single turn; "
+            f"ignore silence and noise.{hint} Timestamps are seconds from the start of the recording."
+        )
+        f = self.client.files.upload(file=wav_path, config=types.UploadFileConfig(mime_type="audio/wav"))
+        try:
+            for _ in range(90):  # wait until Google has finished processing the audio
+                f = self.client.files.get(name=f.name)
+                state = getattr(getattr(f, "state", None), "name", "ACTIVE")
+                if state == "ACTIVE":
+                    break
+                if state == "FAILED":
+                    raise RuntimeError("Google could not process the recording")
+                time.sleep(2)
+            data = self._with_fallback([f, prompt], True, timeout_ms=240_000)
+        finally:
+            try:
+                self.client.files.delete(name=f.name)  # the recording does not stay on Google's side
+            except Exception:
+                pass
+        return _turns_with_names(data)
 
     # ---- question answering --------------------------------------------
     def ask(self, question: str, transcript: str, analysis: dict | None) -> str:
