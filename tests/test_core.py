@@ -7,6 +7,8 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
+import pathlib
+
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -535,3 +537,19 @@ def test_a_stretch_too_short_to_matter_does_not_split_a_line():
     lines = [line]
     diarize.apply_turns(lines, turns, {}, set())
     assert len(lines) == 1 and lines[0]["speaker"] == "Anita"
+
+
+# ---- the repository is public: never let meeting material into it ------------------------------------------
+import subprocess  # noqa: E402
+
+PRIVATE_SUFFIXES = (".docx", ".doc", ".pdf", ".wav", ".mp3", ".m4a", ".webm", ".mp4")
+
+
+def test_no_meeting_documents_or_recordings_are_tracked():
+    root = pathlib.Path(__file__).resolve().parents[1]
+    try:
+        files = subprocess.run(["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True).stdout.splitlines()
+    except (OSError, subprocess.CalledProcessError):
+        pytest.skip("not a git checkout")
+    bad = [f for f in files if f.lower().endswith(PRIVATE_SUFFIXES) or f.startswith("~$") or "/reports/" in f]
+    assert bad == [], f"private files are tracked: {bad}"
