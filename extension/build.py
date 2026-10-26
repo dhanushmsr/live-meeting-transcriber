@@ -10,7 +10,6 @@ so the two can never drift apart.
 
 import json
 import re
-import tomllib
 import shutil
 import sys
 import zipfile
@@ -35,6 +34,12 @@ def make_icons(target: Path) -> None:
     for size in (16, 32, 48, 128):
         img.resize((size, size), Image.LANCZOS).save(target / "icons" / f"icon{size}.png")
     img.resize((128, 128), Image.LANCZOS).save(target / "icons" / "ink.png")   # the floating bubble and popup logo
+
+
+def app_version() -> str:
+    """The `version` from pyproject.toml (read by hand: tomllib needs Python 3.11 and Ink supports 3.10)."""
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    return re.search(r'(?m)^version\s*=\s*"([^"]+)"', text).group(1)
 
 
 def make_report_page(target: Path) -> None:
@@ -72,7 +77,7 @@ def build(browser: str) -> Path:
     make_report_page(target)
 
     m = json.loads((HERE / "manifest.base.json").read_text(encoding="utf-8"))
-    m["version"] = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]   # same as the app
+    m["version"] = app_version()   # same as the app
     if browser == "chrome":
         m["permissions"] += ["tabCapture", "offscreen"]          # hear the meeting tab: no BlackHole or loopback needed
         m["background"] = {"service_worker": "background.js", "type": "module"}
