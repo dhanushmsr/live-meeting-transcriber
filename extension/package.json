@@ -1,0 +1,10 @@
+{
+  "name": "ink-meeting-extension",
+  "private": true,
+  "type": "module",
+  "description": "Ink as a browser extension. Core logic is plain ES modules so it runs in the browser and in Node tests.",
+  "scripts": {
+    "test": "node --test --test-timeout=60000",
+    "build": "python build.py"
+  }
+}

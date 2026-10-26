@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ink settings</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0f172a; color: #e2e8f0; font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 28px 20px 60px; }
+  header { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+  header img { width: 44px; height: 44px; border-radius: 50%; background: #fff; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 13px; letter-spacing: .08em; color: #94a3b8; margin: 26px 0 8px; text-transform: uppercase; }
+  label { display: block; margin: 12px 0 4px; font-weight: 600; font-size: 14px; }
+  input[type=text], input[type=password], select { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; font: inherit; }
+  .check { display: flex; gap: 10px; align-items: flex-start; margin: 12px 0; }
+  .check input { margin-top: 5px; width: 17px; height: 17px; }
+  .check small, .note { color: #94a3b8; font-size: 13px; display: block; }
+  button { font: inherit; border-radius: 10px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; padding: 9px 16px; cursor: pointer; }
+  button.primary { background: #2563eb; border-color: #2563eb; font-weight: 600; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  #msg { margin-top: 14px; min-height: 22px; font-size: 14px; }
+  .ok { color: #86efac; } .bad { color: #fca5a5; }
+  a { color: #93c5fd; }
+</style>
+</head>
+<body>
+<main>
+  <header><img src="icons/ink.png" alt=""><h1>Ink settings</h1></header>
+  <p class="note">Everything is stored only in this browser. Your key is sent to Google's Gemini and nowhere else.</p>
+
+  <h2>Gemini</h2>
+  <label for="apiKey">Gemini API key</label>
+  <input id="apiKey" type="password" placeholder="Paste your key" autocomplete="off">
+  <div class="row"><button id="test">Test the key</button><span class="note">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>.</span></div>
+
+  <h2>You</h2>
+  <label for="name">Your name</label>
+  <input id="name" type="text" placeholder="Used for the report and to alert you when someone says it">
+
+  <h2>Captions</h2>
+  <div class="check"><input id="captions" type="checkbox"><div><b>Show live captions on the meeting page</b></div></div>
+  <div class="check"><input id="translate" type="checkbox"><div><b>Show captions in my language</b><small>Anything said in another language is translated live.</small></div></div>
+  <label for="targetLanguage">Caption language</label>
+  <select id="targetLanguage"></select>
+
+  <h2>Who said what</h2>
+  <div class="check"><input id="nameSpeakers" type="checkbox"><div><b>Tell the other people's voices apart after the meeting</b>
+    <small>Ink keeps a recording of the other participants until the report is written, sends it to Gemini to separate the voices, then deletes it.</small></div></div>
+
+  <h2>Microphone</h2>
+  <label for="micDeviceId">Which microphone</label>
+  <select id="micDeviceId"><option value="">System default</option></select>
+  <div class="row"><button id="allowMic">Allow microphone</button><span class="note" id="micNote">Needed once, so Ink can hear you.</span></div>
+
+  <h2>Sharing</h2>
+  <div class="check"><input id="shareOnline" type="checkbox"><div><b>Create a shareable link automatically</b>
+    <small>Off by default. When on, every finished report is uploaded to Ink's report server and opens as a public link that anyone who has it can read for 72 hours. You can also share a single report from its own page.</small></div></div>
+
+  <div class="row"><button id="save" class="primary">Save</button></div>
+  <div id="msg"></div>
+</main>
+<script type="module" src="options.js"></script>
+</body>
+</html>

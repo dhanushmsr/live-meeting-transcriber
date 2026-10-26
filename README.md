@@ -97,6 +97,36 @@ search it. Empty sections never appear.
 
 To just **read a report** on another device, open its link in a browser. Nothing needs to be installed.
 
+## Ink as a browser extension (no Python needed)
+
+The same assistant also ships as a browser extension: a small Ink bubble on the meeting tab, live captions, notes, and the
+same one-page report (kept in the extension for 72 hours, exportable to DOCX, PDF or Markdown).
+
+**Install (Chrome, Edge, Brave, Opera, Vivaldi, Arc):**
+
+1. Download `ink-chrome.zip` from the [latest release](https://github.com/dhanushmsr/live-meeting-transcriber/releases/latest) and unzip it
+   (or build it yourself: `pip install pillow && python extension/build.py`, then use `extension/dist/chrome`).
+2. Open `chrome://extensions` (Edge: `edge://extensions`), turn on **Developer mode**, click **Load unpacked** and pick the folder.
+3. The settings page opens: paste your Gemini API key (stored only in your browser).
+4. Open your meeting tab, click the Ink icon (or press **Alt+Shift+K**) and press start.
+
+**Firefox:** `ink-firefox.zip` via `about:debugging` > This Firefox > Load Temporary Add-on. Firefox cannot capture a tab's
+audio, so it hears **your microphone only** (experimental).
+**Safari:** needs Apple's converter (`xcrun safari-web-extension-converter extension/dist/chrome`); not tested.
+
+| | Chromium browsers | Firefox |
+|---|---|---|
+| Your microphone ("You") | yes | yes |
+| Other participants' audio (tab audio) | yes | no |
+| Live captions, translation, catch me up, bookmarks, name alert | yes | yes |
+| Report with export, ask-this-meeting | yes | yes |
+
+Permissions are minimal: the active tab (only when you click Ink), storage, and network access to Google's Gemini API
+(and your report server, only if you turn on online sharing). Nothing else is contacted and no remote code is loaded.
+
+Tested so far: unit tests, and a real Chrome run with a fake microphone (live captions, analysis, report page, exports).
+Not yet tested by me: the tab-audio click flow on a real Meet/Zoom tab, Firefox, and Edge/Brave/Opera specifically.
+
 ## Troubleshooting
 
 - **`uvx` or `inkwake` is "not recognized".** Install uv (see above), then **close and reopen the terminal**. Prefer `uvx`

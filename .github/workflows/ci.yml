@@ -48,6 +48,29 @@ jobs:
           print("wheel ok")
           EOF
 
+  extension:
+    name: Browser extension (tests and build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests (no browser and no API key needed)
+        working-directory: extension
+        run: node --test --test-timeout=60000
+      - name: Build the Chrome and Firefox packages
+        run: |
+          python -m pip install pillow
+          python extension/build.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ink-extension
+          path: extension/dist/*.zip
+
   worker:
     name: Report server builds
     runs-on: ubuntu-latest

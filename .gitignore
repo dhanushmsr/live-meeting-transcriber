@@ -5,3 +5,5 @@ dist/
 .wrangler/
 node_modules/
 *.docx
+extension/dist/
+extension/node_modules/

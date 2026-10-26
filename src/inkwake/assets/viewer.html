@@ -105,10 +105,10 @@
     <div class="brand"><span>Ink</span><span class="brand-badge">Meeting brief</span></div>
     <div class="actions">
       <span class="expiry" id="timerTag" title="This link deletes itself after 72 hours"><span id="countdownText">Loading...</span></span>
-      <button class="btn" onclick="shareReport()">Share link</button>
-      <button class="btn" onclick="exportDocx()">Export DOCX</button>
-      <button class="btn" onclick="exportMarkdown()">Markdown</button>
-      <button class="btn btn-primary" onclick="exportPdf()">Export PDF</button>
+      <button class="btn" data-act="shareReport">Share link</button>
+      <button class="btn" data-act="exportDocx">Export DOCX</button>
+      <button class="btn" data-act="exportMarkdown">Markdown</button>
+      <button class="btn btn-primary" data-act="exportPdf">Export PDF</button>
     </div>
   </header>
   <main class="wrap"><article class="page" id="reportContent"><div class="loading">Loading report...</div></article></main>
@@ -155,14 +155,36 @@ function people() {
   return [...new Set(all)].filter(n => !["others", "you"].includes(n.toLowerCase()) && (!host || !n.toLowerCase().includes(host)));
 }
 
+// ---------- how this page gets its data ----------
+// Ink's web server (local or cloud) needs nothing special: the defaults below talk to /api. The browser extension
+// supplies window.INK (before this script runs) to read reports from the browser's storage instead.
+const INK = window.INK || {};
+const reportId = () => (INK.reportId ? INK.reportId() : location.pathname.split("/").filter(Boolean).pop() || "");
+async function loadReport(id) {
+  if (INK.load) return INK.load(id);
+  const r = await fetch("/api/report/" + encodeURIComponent(id), { cache: "no-store" });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+async function canAsk() {
+  if (INK.canAsk) return INK.canAsk();
+  try { return (await (await fetch("/api/capabilities", { cache: "no-store" })).json()).ask === true; } catch (e) { return false; }   // cloud: not offered
+}
+async function askMeeting(id, question) {
+  if (INK.ask) return INK.ask(id, question);
+  const r = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, question }) });
+  const j = await r.json();
+  return j.answer || j.error || "No answer";
+}
+
 // ---------- load ----------
+document.querySelectorAll("[data-act]").forEach((b) => b.addEventListener("click", () => window[b.dataset.act]()));
 (async function load() {
-  const id = location.pathname.split("/").filter(Boolean).pop() || "";
   try {
-    const r = await fetch("/api/report/" + encodeURIComponent(id), { cache: "no-store" });
-    if (r.status === 404) return showGone();
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    reportData = await r.json(); render();
+    const data = await loadReport(reportId());
+    if (!data) return showGone();
+    reportData = data; render();
   } catch (e) { const root = document.getElementById("reportContent"); root.textContent = ""; add(root, h("div", "loading", "Could not load this report: " + e.message)); }
 })();
 
@@ -289,8 +311,7 @@ function render() {
 
 // ---------- ask this meeting (only where the server can answer: Ink's local server) ----------
 async function initAsk() {
-  let ok = false;
-  try { ok = (await (await fetch("/api/capabilities", { cache: "no-store" })).json()).ask === true; } catch (e) { /* cloud: not offered */ }
+  const ok = await canAsk();
   const slot = document.getElementById("askSlot"); if (!ok || !slot) return;
   const input = h("input"); input.type = "text"; input.maxLength = 500; input.placeholder = "e.g. What did we decide about pricing? Who owns the release notes?";
   const btn = h("button", "btn btn-primary", "Ask"), out = h("div");
@@ -299,9 +320,7 @@ async function initAsk() {
     btn.disabled = true; btn.textContent = "Thinking...";
     const qEl = h("div", "q", q), aEl = h("div", "a", "..."); out.prepend(aEl); out.prepend(qEl);
     try {
-      const id = location.pathname.split("/").filter(Boolean).pop();
-      const r = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, question: q }) });
-      const j = await r.json(); aEl.textContent = j.answer || j.error || "No answer";
+      aEl.textContent = await askMeeting(reportId(), q);
     } catch (e) { aEl.textContent = "Could not get an answer: " + e.message; }
     btn.disabled = false; btn.textContent = "Ask"; input.value = "";
   };
@@ -310,6 +329,11 @@ async function initAsk() {
 }
 
 async function shareReport() {
+  if (INK.share) {   // the extension has no public address of its own: sharing uploads this one report on request
+    try { showToast("Creating the link..."); const link = await INK.share(reportData); await navigator.clipboard.writeText(link); showToast("Public link copied. It works for 72 hours."); }
+    catch (e) { showToast(String(e.message || e)); }
+    return;
+  }
   const url = location.href, t = (reportData && reportData.title) || "Meeting report";
   if (navigator.share) { try { await navigator.share({ title: t, text: t + " - meeting brief", url }); return; } catch (e) { /* cancelled */ } }
   try { await navigator.clipboard.writeText(url); showToast("Link copied. Paste it into WhatsApp, Gmail or anywhere."); } catch (e) { showToast("Copy this address: " + url); }

@@ -553,3 +553,36 @@ def test_no_meeting_documents_or_recordings_are_tracked():
         pytest.skip("not a git checkout")
     bad = [f for f in files if f.lower().endswith(PRIVATE_SUFFIXES) or f.startswith("~$") or "/reports/" in f]
     assert bad == [], f"private files are tracked: {bad}"
+
+
+def _stream():
+    from inkwake.live import LiveStream
+    return LiveStream("You", None, None, config.Settings(), lambda *a: None, lambda *a: None, lambda *a: None, lambda m: None)
+
+
+def test_a_long_talk_by_a_quiet_speaker_never_raises_the_bar_above_their_voice():
+    """Regression: the noise floor used to creep up during speech until quiet talking counted as silence."""
+    st = _stream()
+    heard = total = 0
+    for cycle in range(90):                    # 90 seconds of quiet talking: 0.7 s of words, 0.3 s of pause, repeated
+        for i in range(10):
+            frame = _tone(0.006 if i < 7 else 0.0008, 0.1)
+            if cycle >= 60 and i < 7:          # judge the last 30 s, long after any "learning" period
+                total += 1
+                heard += bool(audio.activity(frame, audio.speech_threshold(st._floor)).all())
+            st._take(frame)
+    assert heard / total >= 0.95
+    assert audio.speech_threshold(st._floor) <= 0.006 * 0.9
+
+
+def test_the_room_noise_estimate_follows_a_noisy_room_up_and_back_down():
+    st = _stream()
+    for _ in range(400):
+        st._take(_tone(0.0005, 0.1))           # quiet room
+    quiet = st._floor
+    for _ in range(400):
+        st._take(_tone(0.01, 0.1))             # a fan comes on: its hum becomes the new normal
+    noisy = st._floor
+    for _ in range(400):
+        st._take(_tone(0.0005, 0.1))           # the fan goes off again
+    assert quiet < 0.001 and noisy > 0.005 and st._floor < 0.001

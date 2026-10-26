@@ -46,7 +46,8 @@ class LiveStream:
         self._speaker = label                  # speaker of the line being built (sticky)
         self._line_mono = 0.0
         self._line_end = 0.0                   # stream time (s) of the last words in the line being built
-        self._floor = 0.002                    # running estimate of the room noise level (RMS)
+        self._floor = 0.001                    # estimate of the room noise level (RMS)
+        self._rms_hist: deque = deque(maxlen=300)  # frame levels of the last 30 s
         self._dead_secs = 0.0                  # how long the microphone has delivered digital silence
         self._mic_warned = False
         self._talk_pending: deque = deque()    # (monotonic time, minute) waiting for a name
@@ -147,10 +148,12 @@ class LiveStream:
             return
         secs = len(data) / audio.SR
         rms = audio.frame_rms(data)
-        # Learn how noisy the room is (the quiet 20% of frames) and require speech to stand clearly above it.
-        if len(rms):
-            self._floor = 0.97 * self._floor + 0.03 * float(np.percentile(rms, 20))
+        # Speech must stand clearly above the room's own noise. The noise level is the quiet end (10th percentile) of the
+        # last 30 seconds: pauses between words keep it low, a steady fan raises it, and a long talk cannot.
         act = rms > audio.speech_threshold(self._floor)
+        self._rms_hist.extend(float(r) for r in rms)
+        if len(self._rms_hist) >= 10:
+            self._floor = float(np.percentile(self._rms_hist, 10))
         self._watch_microphone(rms, secs)
         if act.any():
             self.last_speech = time.monotonic()

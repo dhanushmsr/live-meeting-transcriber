@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "inkwake"
-version = "0.2.0"
+version = "0.3.0"
 description = "Ink: a meeting assistant that listens, captions, translates and writes the report"
 readme = "README.md"
 license = { text = "MIT" }

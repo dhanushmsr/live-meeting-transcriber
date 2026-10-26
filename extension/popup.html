@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ink</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 320px; background: #0f172a; color: #e2e8f0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 10px; padding: 14px 16px 6px; }
+  header img { width: 34px; height: 34px; border-radius: 50%; background: #fff; }
+  header b { font-size: 16px; }
+  #status { padding: 0 16px 10px; color: #94a3b8; font-size: 13px; min-height: 24px; }
+  #status.err { color: #fca5a5; }
+  .row { display: flex; gap: 8px; padding: 0 16px 10px; flex-wrap: wrap; }
+  button { font: inherit; border-radius: 10px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; padding: 9px 14px; cursor: pointer; }
+  button:hover { background: #273449; }
+  button.primary { background: #2563eb; border-color: #2563eb; width: 100%; font-weight: 600; padding: 12px; }
+  button.primary:hover { background: #1d4ed8; }
+  button.stop { background: #b91c1c; border-color: #b91c1c; }
+  button[hidden] { display: none; }
+  footer { display: flex; justify-content: space-between; padding: 8px 16px 14px; font-size: 12px; }
+  a { color: #93c5fd; cursor: pointer; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .hint { padding: 0 16px 10px; font-size: 12px; color: #64748b; }
+</style>
+</head>
+<body>
+  <header><img src="icons/ink.png" alt=""><b>Ink</b></header>
+  <div id="status">Checking...</div>
+  <div class="row"><button id="start" class="primary" hidden>Start Ink on this tab</button></div>
+  <div class="row">
+    <button id="pause" hidden>Pause</button>
+    <button id="resume" hidden>Resume</button>
+    <button id="bookmark" hidden>&#9733; Bookmark</button>
+    <button id="stop" class="stop" hidden>Stop &amp; get report</button>
+  </div>
+  <div class="hint" id="hint"></div>
+  <footer><a id="settings">Settings</a><a id="last">Open last report</a></footer>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

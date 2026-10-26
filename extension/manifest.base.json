@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Ink - live captions, translation and meeting reports",
+  "short_name": "Ink",
+  "version": "0.3.0",
+  "description": "Live captions and translation for any online meeting, who said what, action items, and a one-page report. Bring your own Gemini key.",
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "action": {
+    "default_title": "Ink",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png" }
+  },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "permissions": ["activeTab", "scripting", "storage", "unlimitedStorage", "alarms", "notifications"],
+  "host_permissions": ["https://generativelanguage.googleapis.com/*", "https://inkwake-reports.inkwake.workers.dev/*"],
+  "web_accessible_resources": [{ "resources": ["icons/ink.png"], "matches": ["<all_urls>"] }],
+  "commands": { "_execute_action": { "suggested_key": { "default": "Alt+Shift+K" }, "description": "Open Ink" } }
+}
