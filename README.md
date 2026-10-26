@@ -120,12 +120,21 @@ audio, so it hears **your microphone only** (experimental).
 | Other participants' audio (tab audio) | yes | no |
 | Live captions, translation, catch me up, bookmarks, name alert | yes | yes |
 | Report with export, ask-this-meeting | yes | yes |
+| Real speaker names on Google Meet | yes | no (no tab audio) |
+
+**Speaker names on Google Meet.** The extension reads the names on Meet's participant tiles and watches which tile's
+sound indicator is moving, so captions and the transcript show "Anita: ..." instead of "Others: ...". This works without
+Meet's own captions and costs no API calls. With only one other person in the call, everything they say is theirs. After
+the meeting, the voice separation gets the names on screen as a hint and confirms who said what. Only the names on the
+tiles are read; nothing on the page is changed. Other meeting sites (Zoom, Teams, ...) still show "Others" live and get
+"Speaker 1, 2, ..." or names said aloud after the meeting.
 
 Permissions are minimal: the active tab (only when you click Ink), storage, and network access to Google's Gemini API
 (and your report server, only if you turn on online sharing). Nothing else is contacted and no remote code is loaded.
 
 Tested so far: unit tests, and a real Chrome run with a fake microphone (live captions, analysis, report page, exports).
-Not yet tested by me: the tab-audio click flow on a real Meet/Zoom tab, Firefox, and Edge/Brave/Opera specifically.
+Not yet tested by me: the tab-audio click flow on a real Meet/Zoom tab, Meet name reading on the real Meet page (it was
+tested on a page built like Meet's), Firefox, and Edge/Brave/Opera specifically.
 
 ## Troubleshooting
 

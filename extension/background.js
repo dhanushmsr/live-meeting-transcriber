@@ -46,6 +46,7 @@ async function engineCall(type, extra = {}) {
       case "resume": return e.resume();
       case "bookmark": return e.bookmark();
       case "catchup": return e.catchUp();
+      case "names": return e.screenNames(extra.names);
       default: return undefined;
     }
   }
@@ -56,6 +57,11 @@ async function engineCall(type, extra = {}) {
 
 async function injectUi(tabId) {
   await ext.scripting.executeScript({ target: { tabId }, files: ["content/ink.js"] });
+  // Google Meet: also read who is speaking from the participant tiles (only the names on the tiles are read)
+  const tab = await ext.tabs.get(tabId);
+  if (platformFromUrl(tab.url) === "Google Meet") {
+    await ext.scripting.executeScript({ target: { tabId }, files: ["content/names.js"] }).catch(() => {});
+  }
 }
 
 async function toTab(event) {
@@ -136,10 +142,16 @@ ext.storage.onChanged.addListener(async (changes, area) => {
 
 const answer = (promise, reply) => { promise.then((value) => reply({ ok: true, value }), (e) => reply({ ok: false, error: String(e.message || e) })); return true; };
 
-ext.runtime.onMessage.addListener((msg, _sender, reply) => {
+async function screenNames(tabId, names) {
+  const st = await getState();
+  if (st.tabId === tabId && ["recording", "paused"].includes(st.status)) await engineCall("names", { names });
+}
+
+ext.runtime.onMessage.addListener((msg, sender, reply) => {
   if (!msg || msg.target === "offscreen") return false;
   switch (msg.type) {
     case "ink:event": handleEvent(msg.event); return false;
+    case "ink:names": screenNames(sender.tab?.id, msg.names).catch(() => {}); return false;
     case "ink:start": return answer(startSession(msg.tabId), reply);
     case "ink:control": return answer(control(msg.action), reply);
     case "ink:status": return answer(getState(), reply);

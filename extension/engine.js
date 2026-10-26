@@ -82,6 +82,9 @@ export class Engine {
   /** Settings changed while a meeting is running (caption language, translation on/off): the session reads them live. */
   updateSettings(s) { if (this.session) Object.assign(this.session.settings, s); }
 
+  /** A reading of the meeting page: who is highlighted as speaking, who is there (see content/names.js). */
+  screenNames(reading) { this.session?.observeScreen(reading); }
+
   pause() { this.session?.pause(); }
   resume() { this.session?.resume(); }
   bookmark() { this.session?.bookmark(); }

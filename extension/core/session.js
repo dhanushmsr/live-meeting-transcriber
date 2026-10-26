@@ -1,10 +1,12 @@
-// A meeting session: audio in -> live streams -> captions -> report. Port of src/inkwake/session.py (without the
-// screen-reading watcher: in the browser the reliable names come from the voice separation after the meeting).
+// A meeting session: audio in -> live streams -> captions -> report. Port of src/inkwake/session.py. Live names for the
+// other side come from the meeting page (Google Meet's tiles, see content/names.js); after the meeting the voice
+// separation confirms them.
 
 import { LiveStream } from "./live.js";
 import { wavBlob } from "./audio.js";
 import { applyTurns, looksLikeRealName, MAX_RECORDING_MB, MIN_RECORDING_SECONDS } from "./diarize.js";
 import { stamp } from "./gemini.js";
+import { ScreenNames } from "./screennames.js";
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -48,6 +50,7 @@ export class Session {
     this._chunks = [];            // the other side's audio, kept only until the report is written
     this._chunkBytes = 0;
     this._recording = true;
+    this.screen = new ScreenNames(() => [this.settings.name]);
   }
 
   // ---- control --------------------------------------------------------------
@@ -58,7 +61,7 @@ export class Session {
     for (const label of channels) {
       this.streams[label] = new LiveStream({
         label, apiKey: this.settings.apiKey, getSettings: () => this.settings, WebSocketImpl: this.WS, now: this.now,
-        onPartial: (l, text) => this.hooks.onCaption?.(this._name(l), text, false),
+        onPartial: (l, text) => this.hooks.onCaption?.(this._liveName(l), text, false),
         onSegment: (line) => this._segment(line),
         onTalk: (l, minute, secs) => this._talk(l, minute, secs),
         onNotice: (m) => this.hooks.onNotice?.(m),
@@ -86,6 +89,14 @@ export class Session {
 
   _name(speaker) { return speaker === "You" ? (this.settings.name || "You") : speaker; }
 
+  /** The name to show right now: the profile name for "You", whoever the meeting page highlights for "Others". */
+  _liveName(label) {
+    return label === "Others" ? (this.screen.current(this.meetingTime()) || "Others") : this._name(label);
+  }
+
+  /** A reading of the meeting page (see content/names.js): who is highlighted, who is there, the user's own name. */
+  observeScreen(reading) { this.screen.observe(this.meetingTime(), reading || {}); }
+
   _keep(pcm) {
     if (!this._recording) return;
     this._chunks.push(pcm.slice());
@@ -98,7 +109,8 @@ export class Session {
 
   // ---- callbacks from the streams -------------------------------------------
   _segment(line) {
-    const speaker = this._name(line.speaker);
+    const speaker = line.channel === "Others"
+      ? (this.screen.nameFor(line.t, line.t_end || line.t) || "Others") : this._name(line.speaker);
     const out = { ...line, speaker, mention: false };
     const shown = (this.settings.translate ? line.translation : line.text) || line.text || line.translation;
     if (this.mentionsMe(speaker, `${line.text} ${line.translation}`)) {
@@ -110,7 +122,7 @@ export class Session {
   }
 
   _talk(label, minute, secs) {
-    const who = this._name(label);
+    const who = this._liveName(label);
     this.talk[who] ??= {};
     this.talk[who][minute] = (this.talk[who][minute] || 0) + secs;
   }
@@ -189,7 +201,7 @@ export class Session {
     if (others.offset < MIN_RECORDING_SECONDS || !this.transcript.some((x) => x.channel === "Others")) return;
     this.hooks.onNotice?.("Working out who said what...");
     try {
-      const turns = await this.gemini.diarize(wavBlob(this._chunks), []);
+      const turns = await this.gemini.diarize(wavBlob(this._chunks), [...this.screen.participants]);
       const own = new Set(["You", this._name("You")]);
       const before = new Set(this.transcript.filter((x) => x.channel === "Others").map((x) => x.speaker));
       this.talk = applyTurns(this.transcript, turns, this.talk, own, (spk, text) => this.mentionsMe(spk, text));
@@ -204,6 +216,9 @@ export class Session {
 
   async _finalize() {
     const duration = Math.max(0, ...Object.values(this.streams).map((s) => s.offset));
+    for (const x of this.transcript) {      // lines spoken just before the page's highlight was first read
+      if (x.channel === "Others" && x.speaker === "Others") x.speaker = this.screen.nameFor(x.t, x.t_end || x.t, { after: true }) || "Others";
+    }
     await this._separateSpeakers();
     this.transcript.sort((a, b) => a.t - b.t);
     this.bookmarks = bookmarkContext(this.bookmarks, this.transcript);
@@ -220,7 +235,7 @@ export class Session {
     } else {
       analysis = { summary: "No speech was captured in this meeting." };
     }
-    const participants = [...new Set(this.transcript.filter((x) => x.channel === "Others").map((x) => x.speaker))]
+    const participants = [...new Set([...this.screen.participants, ...this.transcript.filter((x) => x.channel === "Others").map((x) => x.speaker)])]
       .filter((n) => n.toLowerCase() !== "others" && looksLikeRealName(n));
     return {
       title: this.title || "Meeting Report",

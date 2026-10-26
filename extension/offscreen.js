@@ -19,6 +19,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
     case "pause": engine.pause(); reply({ ok: true }); return false;
     case "resume": engine.resume(); reply({ ok: true }); return false;
     case "bookmark": engine.bookmark(); reply({ ok: true }); return false;
+    case "names": engine.screenNames(msg.names); reply({ ok: true }); return false;
     case "catchup": done(Promise.resolve(engine.catchUp())); return true;
     case "status": reply({ ok: true, value: engine.active ? engine.session.state : "idle" }); return false;
     default: return false;
